@@ -3,7 +3,7 @@
  * for the client-side engine. The app has no server dependency for
  * its core pattern-matching features, so it can cache everything.
  */
-const VERSION = "chartdna-v1.1.0";
+const VERSION = "chartdna-v1.2.0";
 const CACHE_NAME = `${VERSION}`;
 
 // Core app shell to precache. Everything else (icons, fonts) is
@@ -57,10 +57,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // For document navigations (page loads): try network first, fallback to cache.
+  // For document navigations (page loads): ALWAYS fetch the freshest HTML,
+  // bypassing the CDN's HTTP cache (GitHub Pages sends max-age=600 for
+  // index.html, which would otherwise keep serving the OLD page for 10 min).
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: "reload" })
         .then((response) => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
