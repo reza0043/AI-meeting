@@ -1,18 +1,22 @@
 /* Chart DNA — Service Worker
  * Enables installability (add to home screen) + offline support
- * for the client-side engine. The app has no server dependency for
- * its core pattern-matching features, so it can cache everything.
+ * for the client-side engine.
+ *
+ * Strategy summary:
+ *  - HTML navigations are ALWAYS fetched fresh (cache:"reload") so users
+ *    never get stuck on a stale page. Falls back to cached shell offline.
+ *  - HASSED assets (JS/CSS/icons) use cache-first (they get a new filename
+ *    on every build, so they can never go stale).
+ *  - On activation, any cache from an older version is deleted automatically,
+ *    so users always get the latest build without touching site data.
  */
-const VERSION = "chartdna-v1.2.0";
+const VERSION = "chartdna-v1.3.0";
 const CACHE_NAME = `${VERSION}`;
 
-// Core app shell to precache. Everything else (icons, fonts) is
-// cached at runtime. Vite hashes assets in production (`/assets/...`),
-// so those are handled by the runtime cache entry below.
-// URLs are RELATIVE so the scope resolves under the site sub-path.
-const ROOT = "./";
+// Core app shell to precache. URLs are RELATIVE so the scope resolves
+// under the site sub-path (/AI-meeting/).
 const PRECACHE_URLS = [
-  ROOT,
+  "./",
   "index.html",
   "manifest.webmanifest",
   "icons/icon-192x192.png",
@@ -31,7 +35,7 @@ self.addEventListener("install", (event) => {
   );
 });
 
-// Activate: clean up old cache versions.
+// Activate: clean up the OLD cache version (so a new build is always used).
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -47,8 +51,7 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Runtime caching: cache-first for immutable hashed assets,
-// network-first (fallback to cache) for navigations & HTML.
+// Runtime caching.
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
@@ -57,9 +60,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // For document navigations (page loads): ALWAYS fetch the freshest HTML,
-  // bypassing the CDN's HTTP cache (GitHub Pages sends max-age=600 for
-  // index.html, which would otherwise keep serving the OLD page for 10 min).
+  // For document navigations: ALWAYS fetch the freshest HTML, bypassing the
+  // CDN's HTTP cache (GitHub Pages serves max-age=600 for index.html, which
+  // would otherwise keep serving the OLD page for 10 min). Fall back to cache.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request, { cache: "reload" })
@@ -73,12 +76,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // For non-navigation (assets, fonts, etc.): cache-first.
+  // For non-navigation assets: cache-first (hashed files never go stale).
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
-        // Cache successful same-origin responses & Google Fonts.
         if (response && response.status === 200) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
