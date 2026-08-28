@@ -10,7 +10,7 @@
  *  - On activation, any cache from an older version is deleted automatically,
  *    so users always get the latest build without touching site data.
  */
-const VERSION = "chartdna-v1.4.0";
+const VERSION = "chartdna-v1.5.0";
 const CACHE_NAME = `${VERSION}`;
 
 // Core app shell to precache. URLs are RELATIVE so the scope resolves
