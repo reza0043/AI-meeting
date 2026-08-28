@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fa">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="icons/icon-192x192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA & Installability -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0f17" />
+    <meta name="description" content="Chart DNA — AI & Algorithmic Market Pattern Matching and Technical Analysis Engine with DTW, Pearson Correlation, and Candlestick Visualizer." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Chart DNA" />
+
+    <!-- iOS PWA icons (apple-touch-icon) -->
+    <link rel="apple-touch-icon" href="icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512x512.png" />
+
+    <!-- iOS splash screens -->
+    <link rel="apple-touch-startup-image" href="icons/icon-512x512.png" />
+
+    <title>Chart DNA — Algorithmic Market Pattern Matching & Technical Intelligence</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/AI-meeting/assets/index-DNJ8oY1l.js"></script>
+    <link rel="stylesheet" crossorigin href="/AI-meeting/assets/index-DcmxwbDb.css">
+  </head>
+  <body class="bg-[#0b0f17] text-[#e2e8f0] font-sans antialiased overflow-x-hidden selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div id="root"></div>
+    <script>
+      // Register the service worker for PWA install & offline support.
+      // Relative path so the SW scope matches the site sub-path (/AI-meeting/).
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker
+            .register("sw.js")
+            .then(function (reg) {
+              console.log("Chart DNA service worker registered:", reg.scope);
+            })
+            .catch(function (err) {
+              console.warn("Service worker registration failed:", err);
+            });
+        });
+      }
+
+      // Capture the manual "Add to Home Screen" install prompt.
+      window.addEventListener("beforeinstallprompt", function (e) {
+        e.preventDefault();
+        window.__chartdnaInstallPrompt = e;
+        window.dispatchEvent(new CustomEvent("chartdna-installable"));
+      });
+    </script>
+  </body>
+</html>
