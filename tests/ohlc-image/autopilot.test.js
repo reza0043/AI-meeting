@@ -200,6 +200,13 @@ const ok = (name, cond, info) => {
   ok('it waits for an image', /در انتظار تصویر/.test(doc.getElementById('ohlc-auto-status').textContent));
   ok('auto options are on by default',
     doc.querySelector('#ohlc-auto-card [data-opt="auto"]').checked && doc.querySelector('#ohlc-auto-card [data-opt="run"]').checked);
+  const pinBox = doc.querySelector('#ohlc-auto-card [data-opt="pin"]');
+  ok('the pin option is offered and on', !!pinBox && pinBox.checked, pinBox ? 'present' : 'missing');
+  pinBox.checked = false;
+  pinBox.dispatchEvent(new win.Event('click', { bubbles: true }));
+  ok('switching the pin off is remembered and reaches the tool',
+    win.localStorage.getItem('chartdna_ohlc_pin') === '0' && win.ChartDnaOhlc.pinned() === false,
+    win.localStorage.getItem('chartdna_ohlc_pin'));
 
   console.log('2) one upload drives everything');
   const file = new win.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
@@ -211,6 +218,7 @@ const ok = (name, cond, info) => {
   ok('the app received the file itself (we did not steal it)', typeof win.__uploaded === 'string' && win.__uploaded.indexOf('data:image') === 0, (win.__uploaded || '').slice(0, 24) + '…');
   ok('extraction finished without a page error', errors.length === 0, errors.join(' | ') || 'none');
   ok('candles drawn into the app card', doc.getElementById('ohlc-auto-badge').textContent.trim() === EXPECT_BARS + ' کندل', doc.getElementById('ohlc-auto-badge').textContent);
+  ok('the pinned opener now shows the candle count', /296 کندل/.test(doc.getElementById('ohlc-open').textContent), doc.getElementById('ohlc-open').textContent.trim());
   const cx = doc.getElementById('ohlc-auto-chart').getContext('2d');
   const px = cx.getImageData(0, 0, doc.getElementById('ohlc-auto-chart').width, doc.getElementById('ohlc-auto-chart').height).data;
   let painted = 0;

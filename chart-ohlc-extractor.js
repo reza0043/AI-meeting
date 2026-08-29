@@ -42,6 +42,11 @@
   .ohlc-tabs button[aria-selected=true]{background:#10b981;color:#04130e;border-color:#10b981;font-weight:700}
   .ohlc-hidden{display:none!important}
   @media(max-width:820px){.ohlc-grid{grid-template-columns:1fr}#ohlc-tool{right:10px;bottom:74px}}
+  #ohlc-tool.ohlc-pinned{right:auto;bottom:auto}
+  #ohlc-tool.ohlc-pinned #ohlc-open{display:flex;align-items:center;gap:7px;min-height:40px;padding:8px 13px;border-radius:999px;background:#020617eb;border:1px solid #10b981;color:#a7f3d0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 6px 22px #000b;font-size:12.5px;line-height:1.2}
+  #ohlc-tool.ohlc-pinned #ohlc-open b{color:#34d399;font-weight:800;font-variant-numeric:tabular-nums}
+  #ohlc-tool.ohlc-pinned #ohlc-open:active{transform:scale(.97)}
+  #ohlc-tool.ohlc-pinned #ohlc-open[disabled]{opacity:.7}
   `;
   const T = {
     open: '📈 استخراج OHLC از تصویر',
@@ -149,7 +154,7 @@
   });
 
   /* ------------------------------------------------------------ open/close */
-  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
+  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; if (rootEl) rootEl.style.visibility = v ? 'hidden' : ''; };
   $('ohlc-open').addEventListener('click', () => show(true));
   rootEl.addEventListener('click', (e) => { if (e.target === rootEl) show(false); });
   $('ohlc-close').addEventListener('click', () => show(false));
@@ -532,8 +537,75 @@
   }
   /* a seam the tests can drive; browsers get the plain reload */
   function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
+
+  /* ------------------------------------------------- the opener, pinned to the picture
+   * On a phone the image card is usually below the fold, so instead of a button in a
+   * far corner the opener is parked on the top-right corner of the picture itself and
+   * clamped to the viewport: it reads as part of the image and still follows the
+   * screen while the column scrolls.  chartdna_ohlc_pin === '0' gives the old corner. */
+  const PIN = 'chartdna_ohlc_pin';
+  let pinRaf = 0;
+  function pinWanted() { let v = null; try { v = localStorage.getItem(PIN); } catch (e) { } return v !== '0'; }
+  function picture() {
+    const card = document.getElementById('image-cropper-card') || document.getElementById('chart-dna-app');
+    if (!card) return null;
+    const cr = card.getBoundingClientRect();
+    if (!(cr.width > 0) || !(cr.height > 0)) return null;
+    let box = null, area = 0;
+    const list = card.querySelectorAll('canvas');
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i].getBoundingClientRect();
+      if (r.width * r.height > area) { area = r.width * r.height; box = r; }
+    }
+    if (box && box.height > 90 && box.top >= cr.top - 1) {
+      return { top: Math.max(box.top, cr.top), left: box.left, right: box.right, height: box.height };
+    }
+    return { top: cr.top + 38, left: cr.left, right: cr.right, height: Math.max(60, cr.height - 46) };
+  }
+  function placePin() {
+    if (!rootEl || !rootEl.parentElement) return;
+    const r = pinWanted() ? picture() : null;
+    if (!r) { rootEl.className = ''; rootEl.style.top = ''; rootEl.style.left = ''; return; }
+    const de = document.documentElement || {};
+    const vw = window.innerWidth || de.clientWidth || 1024;
+    const vh = window.innerHeight || de.clientHeight || 768;
+    const w = rootEl.offsetWidth || 200, h = rootEl.offsetHeight || 42, inset = 10;
+    const top = Math.round(Math.max(8, Math.min(r.top + inset, vh - h - 8)));
+    const left = Math.round(Math.max(8, Math.min(r.right - w - inset, vw - w - 8)));
+    rootEl.style.top = top + 'px';
+    rootEl.style.left = left + 'px';
+    rootEl.className = 'ohlc-pinned';
+  }
+  function schedulePin() {
+    if (pinRaf) return;
+    const go = () => { pinRaf = 0; placePin(); };
+    pinRaf = window.requestAnimationFrame ? window.requestAnimationFrame(go) : setTimeout(go, 16);
+  }
+  function setPin(on) { try { localStorage.setItem(PIN, on ? '1' : '0'); } catch (e) { } placePin(); }
+  function setOpenNote(text) {
+    const btn = $('ohlc-open');
+    if (!btn) return;
+    const safe = String(text == null ? '' : text).replace(/[<>&]/g, '');
+    btn.innerHTML = T.open + (safe ? ' <b>' + safe + '</b>' : '');
+    btn.title = safe ? T.open + ' — ' + safe : T.open;
+    schedulePin();
+  }
+  (function watchPin() {
+    ['scroll', 'resize', 'orientationchange'].forEach((ev) => {
+      try { window.addEventListener(ev, schedulePin, { passive: true, capture: true }); } catch (e) { }
+    });
+    let last = '';
+    /* React can move or resize the card without firing anything we can hear */
+    setInterval(() => {
+      const r = picture();
+      const k = r ? [Math.round(r.top), Math.round(r.left), Math.round(r.right), Math.round(r.height)].join(',') : '';
+      if (k !== last || (pinWanted() && rootEl.className.indexOf('ohlc-pinned') < 0)) { last = k; placePin(); }
+    }, 400);
+    placePin();
+  })();
+
   window.ChartDnaOhlc = {
-    version: 3,
+    version: 4,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
@@ -546,7 +618,10 @@
     saveDataset: (andSearch, opts) => saveDataset(andSearch, opts),
     toCSV: () => window.ChartDNACV.toCSV(state.result),
     reload: reloadPage,
-    open: () => show(true)
+    open: () => show(true),
+    pin: setPin,
+    pinned: pinWanted,
+    note: setOpenNote
   };
 
   $('ohlc-save').addEventListener('click', () => saveDataset(false));

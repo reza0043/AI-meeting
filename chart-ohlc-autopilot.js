@@ -15,6 +15,7 @@
 (() => {
   const CFG_AUTO = 'chartdna_ohlc_auto';       // extract when the app gets an image
   const CFG_RUN = 'chartdna_ohlc_autorun';     // also feed the DNA search (reloads once)
+  const CFG_PIN = 'chartdna_ohlc_pin';         // 0 = the opener floats in the corner instead
   const SEEN = 'chartdna_ohlc_seen_image';     // signature already processed
   const REFPRICE = 'chartdna_reference_price';  // the app's own "market reference price"
   const REFWRITTEN = 'chartdna_ohlc_ref_price'; // …only rewritten if the user did not set it
@@ -136,6 +137,7 @@
     tried[signature(url)] = 0;
     await handle(url, true);
   }
+  function setNote(text) { try { const A = api(); if (A && A.note) A.note(text); } catch (e) { } }
   function statusLine(msg, kind) {
     const el = document.getElementById('ohlc-auto-status');
     if (el) { el.textContent = msg; el.style.color = kind === 'warn' ? '#fbbf24' : ''; }
@@ -156,14 +158,16 @@
     try {
       await A.useImage(url);
       ensureCard('در حال اندازه‌گیری پیکسل‌ها…', null);
+      setNote('…');
       const res = await A.run(sig);
-      if (!res || !res.ok) { current = null; ensureCard('استخراج انجام نشد: ' + ((res && res.error) || 'خطای نامشخص'), null); return; }
+      if (!res || !res.ok) { current = null; setNote(''); ensureCard('استخراج انجام نشد: ' + ((res && res.error) || 'خطای نامشخص'), null); return; }
       if (!(res.calibration && res.calibration.detected)) {
         current = null;
         ensureCard('کندل‌ها پیدا شدند (' + res.candles + ') اما محور قیمت خوانده نشد؛ برای عدد دادن، در پنل استخراج چند ردیف مرجع وارد کنید.', null);
         return;
       }
       drawCard(res);
+      setNote((res.candles || res.bars.length) + ' کندل');
       const saved = await A.saveDataset(false, { silent: true, pattern: true, id: datasetId(sig) });
       if (saved && saved.error) { current = null; ensureCard('ثبت دیتاست ناموفق: ' + saved.error, res); return; }
       cardStatus(res, saved);
@@ -218,13 +222,19 @@
         <button data-act="panel" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg cursor-pointer">پنل استخراج (تاریخ، کالیبراسیون دستی)</button>
         <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="auto" style="width:auto"> استخراج خودکار</label>
         <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="run" style="width:auto"> خودکار به جستجو بده</label>
+        <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="pin" style="width:auto"> دکمهٔ استخراج روی تصویر چسبان</label>
       </div>`;
     host.insertAdjacentElement('afterend', el);
     card = el;
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-act],[data-opt]');
       if (!b) return;
-      if (b.dataset.opt) { set(b.dataset.opt === 'auto' ? CFG_AUTO : CFG_RUN, b.checked ? '1' : '0'); syncOptions(); return; }
+      if (b.dataset.opt) {
+        const on = b.checked;
+        set(b.dataset.opt === 'auto' ? CFG_AUTO : b.dataset.opt === 'run' ? CFG_RUN : CFG_PIN, on ? '1' : '0');
+        if (b.dataset.opt === 'pin' && api() && api().pin) api().pin(on);   /* move the opener now */
+        syncOptions(); return;
+      }
       act(b.dataset.act);
     });
     log('card attached to', host.id || String(host.className).split(' ')[0]);
@@ -281,9 +291,10 @@
   }
   function syncOptions() {
     if (!card) return;
-    const a = card.querySelector('[data-opt="auto"]'), r = card.querySelector('[data-opt="run"]');
+    const a = card.querySelector('[data-opt="auto"]'), r = card.querySelector('[data-opt="run"]'), k = card.querySelector('[data-opt="pin"]');
     if (a) a.checked = autoOn();
     if (r) r.checked = runOn();
+    if (k) k.checked = get(CFG_PIN) !== '0';
   }
   function keyLevels(res) {
     let hi = -Infinity, lo = Infinity;
