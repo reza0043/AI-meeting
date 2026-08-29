@@ -538,47 +538,41 @@
   /* a seam the tests can drive; browsers get the plain reload */
   function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
 
-  /* ------------------------------------------------- the opener, pinned to the picture
+  /* ------------------------------------------------- the opener, pinned to the top
    * On a phone the image card is usually below the fold, so instead of a button in a
    * far corner the opener is parked on the top-right corner of the picture itself and
    * clamped to the viewport: it reads as part of the image and still follows the
    * screen while the column scrolls.  chartdna_ohlc_pin === '0' gives the old corner. */
   const PIN = 'chartdna_ohlc_pin';
-  let pinRaf = 0;
+  let pinRaf = 0, lastPin = '';
   function pinWanted() { let v = null; try { v = localStorage.getItem(PIN); } catch (e) { } return v !== '0'; }
-  function picture() {
-    const card = document.getElementById('image-cropper-card') || document.getElementById('chart-dna-app');
-    if (!card) return null;
-    const cr = card.getBoundingClientRect();
-    if (!(cr.width > 0) || !(cr.height > 0)) return null;
-    let box = null, area = 0;
-    /* the picture itself, whether the app paints it on a canvas or in an <img> */
-    const list = card.querySelectorAll('canvas,img');
-    for (let i = 0; i < list.length; i++) {
-      const el = list[i];
-      if (el.closest && el.closest('#ohlc-modal,#ohlc-auto-card')) continue;   // never our own preview
-      const r = el.getBoundingClientRect();
-      if (!(r.height > 90)) continue;
-      if (r.width * r.height > area) { area = r.width * r.height; box = r; }
-    }
-    if (box && box.top >= cr.top - 1) {
-      return { top: Math.max(box.top, cr.top), left: box.left, right: box.right, height: box.height };
-    }
-    return { top: cr.top + 38, left: cr.left, right: cr.right, height: Math.max(60, cr.height - 46) };
-  }
-  function placePin() {
-    if (!rootEl || !rootEl.parentElement) return;
-    const r = pinWanted() ? picture() : null;
-    if (!r) { rootEl.className = ''; rootEl.style.top = ''; rootEl.style.left = ''; return; }
+  /* where the pinned opener belongs: the right edge of the app column, in the
+     band under the app's own top bar, so it never covers the logo or the
+     settings button and still reads as part of that bar. */
+  function pinAnchor() {
     const de = document.documentElement || {};
     const vw = window.innerWidth || de.clientWidth || 1024;
     const vh = window.innerHeight || de.clientHeight || 768;
-    const w = rootEl.offsetWidth || 200, h = rootEl.offsetHeight || 42, inset = 10;
-    const top = Math.round(Math.max(8, Math.min(r.top + inset, vh - h - 8)));
-    const left = Math.round(Math.max(8, Math.min(r.right - w - inset, vw - w - 8)));
+    const app = document.getElementById('chart-dna-app');
+    const ar = app ? app.getBoundingClientRect() : null;
+    const right = (ar && ar.width > 0) ? Math.min(ar.right, vw) : vw;
+    const bar = document.getElementById('btn-header-settings') || document.getElementById('btn-header-install');
+    const br = bar ? bar.getBoundingClientRect() : null;
+    const below = br && br.height > 0 ? br.bottom : 4;
+    return { vw: vw, vh: vh, right: right, below: below };
+  }
+  function keyOf(a) { return a ? [Math.round(a.right), Math.round(a.below), a.vw, a.vh].join(',') : ''; }
+  function placePin() {
+    if (!rootEl || !rootEl.parentElement) return;
+    if (!pinWanted()) { rootEl.className = ''; rootEl.style.top = ''; rootEl.style.left = ''; lastPin = ''; return; }
+    const a = pinAnchor();
+    const w = rootEl.offsetWidth || 200, h = rootEl.offsetHeight || 42, inset = 12;
+    const top = Math.round(Math.max(12, Math.min(a.below + 8, a.vh - h - 8)));
+    const left = Math.round(Math.max(8, Math.min(a.right - w - inset, a.vw - w - 8)));
     rootEl.style.top = top + 'px';
     rootEl.style.left = left + 'px';
     rootEl.className = 'ohlc-pinned';
+    lastPin = keyOf(a);
   }
   function schedulePin() {
     if (pinRaf) return;
@@ -598,12 +592,10 @@
     ['scroll', 'resize', 'orientationchange'].forEach((ev) => {
       try { window.addEventListener(ev, schedulePin, { passive: true, capture: true }); } catch (e) { }
     });
-    let last = '';
-    /* React can move or resize the card without firing anything we can hear */
+    /* React can move or resize the top bar without firing anything we can hear */
     setInterval(() => {
-      const r = picture();
-      const k = r ? [Math.round(r.top), Math.round(r.left), Math.round(r.right), Math.round(r.height)].join(',') : '';
-      if (k !== last || (pinWanted() && rootEl.className.indexOf('ohlc-pinned') < 0)) { last = k; placePin(); }
+      const k = pinWanted() ? keyOf(pinAnchor()) : '';
+      if (k !== lastPin || rootEl.className.indexOf('ohlc-pinned') < 0) placePin();
     }, 400);
     placePin();
   })();

@@ -20,11 +20,14 @@ if (!IMG || !fs.existsSync(IMG)) { console.error('set OHLC_IMG to a chart screen
 const SIZE = process.env.OHLC_IMG_SIZE ? JSON.parse(process.env.OHLC_IMG_SIZE) : null;
 
 /* a page that mimics the parts of the app the tool talks to */
-const PAGE = '<!doctype html><html lang="fa"><head><meta charset="utf-8">' +
+const PAGE = '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">' +
   '<script src="chart-ohlc-engine.js"></script><script src="chart-ohlc-extractor.js"></script>' +
-  '</head><body><div id="root"><button id="app-search">جستجو در تاریخچه</button>' +
+  '</head><body><div id="root"><div id="chart-dna-app" dir="rtl">' +
+  '<header><button id="btn-header-settings">تنظیمات</button></header>' +
+  '<button id="app-search">جستجو در تاریخچه</button>' +
   '<div id="image-cropper-card"><canvas id="app-canvas"></canvas><img id="app-preview" src="blob:preview"></div>' +
-  '<img id="app-img" src="blob:something"></div></body></html>';
+  '<img id="app-img" src="blob:something">' +
+  '</div></div></body></html>';
 
 const server = http.createServer((req, res) => {
   const u = req.url.split('?')[0];
@@ -76,7 +79,8 @@ function patchWindow(window, blobs) {
   /* jsdom knows no layout: give the app image card and its canvas a geometry and
      a scroll offset, so pinning the opener onto the picture can be measured. */
   win.__layout = { scrollY: 0 };
-  const RECT = { 'image-cropper-card': [20, 120, 520, 480], 'app-canvas': [28, 170, 512, 470], 'app-preview': [28, 160, 512, 470] };
+  const RECT = { 'chart-dna-app': [16, 0, 1008, 2400], 'btn-header-settings': [880, 12, 1000, 52],
+    'image-cropper-card': [20, 120, 520, 480], 'app-canvas': [28, 170, 512, 470], 'app-preview': [28, 160, 512, 470] };
   win.Element.prototype.getBoundingClientRect = function () {
     const r = RECT[this.id];
     if (!r) return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON() { return this; } };
@@ -149,21 +153,20 @@ const ok = (name, cond, info) => {
   ok('button opens the modal', $('ohlc-modal').style.display === 'flex');
   ok('drag & drop and paste are wired', /dragover/.test($('ohlc-drop').getAttribute('class') || '') || !!$('ohlc-drop'), 'drop zone present');
 
-  console.log('1b) the opener is pinned on top of the app picture');
+  console.log('1b) the opener is pinned to the top of the page, right side');
   const tool = $('ohlc-tool');
-  ok('it anchors on the biggest picture in the card, not a small overlay canvas',
-    /ohlc-pinned/.test(tool.className) && tool.style.top === '170px', 'top=' + tool.style.top);
-  ok('the opener sits on the image, at its top-right',
-    /ohlc-pinned/.test(tool.className) && tool.style.top === '170px' && tool.style.left === '302px',
+  ok('it sits in the app column, under the top bar and flush right',
+    /ohlc-pinned/.test(tool.className) && tool.style.top === '60px' && tool.style.left === '796px',
     tool.className + ' top=' + tool.style.top + ' left=' + tool.style.left);
-  win.__layout.scrollY = 400;                       /* the user scrolls the picture away */
+  ok('it does not cover the app header', 12 !== parseInt(tool.style.top, 10), 'top=' + tool.style.top);
+  win.__layout.scrollY = 400;                       /* the user scrolls the page down */
   win.dispatchEvent(new win.Event('scroll'));
-  for (let i = 0; i < 40 && tool.style.top !== '8px'; i++) await sleep(20);
-  ok('it stays reachable instead of scrolling out of sight', tool.style.top === '8px', 'top=' + tool.style.top);
+  for (let i = 0; i < 40 && tool.style.top !== '12px'; i++) await sleep(20);
+  ok('it stays pinned to the top of the screen instead of scrolling away', tool.style.top === '12px', 'top=' + tool.style.top);
   win.__layout.scrollY = 0;
   win.dispatchEvent(new win.Event('scroll'));
-  for (let i = 0; i < 40 && tool.style.top !== '170px'; i++) await sleep(20);
-  ok('and returns to the picture when it is back in view', tool.style.top === '170px', 'top=' + tool.style.top);
+  for (let i = 0; i < 40 && tool.style.top !== '60px'; i++) await sleep(20);
+  ok('and returns under the top bar at the top of the page', tool.style.top === '60px', 'top=' + tool.style.top);
   win.ChartDnaOhlc.note('296 کندل');
   ok('the pinned button carries the result count', /296 کندل/.test(txt('ohlc-open')), txt('ohlc-open'));
   win.ChartDnaOhlc.pin(false);
@@ -172,7 +175,7 @@ const ok = (name, cond, info) => {
     JSON.stringify({ cls: tool.className, top: tool.style.top, key: win.localStorage.getItem('chartdna_ohlc_pin') }));
   win.ChartDnaOhlc.pin(true);
   await sleep(60);
-  ok('switching it back on re-parks it on the picture', /ohlc-pinned/.test(tool.className) && tool.style.top === '170px',
+  ok('switching it back on re-pins it to the top', /ohlc-pinned/.test(tool.className) && tool.style.top === '60px',
     tool.className + ' top=' + tool.style.top);
   win.ChartDnaOhlc.pin(false);                      /* the rest of this suite is layout-free */
 

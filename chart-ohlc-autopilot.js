@@ -15,7 +15,7 @@
 (() => {
   const CFG_AUTO = 'chartdna_ohlc_auto';       // extract when the app gets an image
   const CFG_RUN = 'chartdna_ohlc_autorun';     // also feed the DNA search (reloads once)
-  const CFG_PIN = 'chartdna_ohlc_pin';         // 0 = the opener floats in the corner instead
+  const CFG_PIN = 'chartdna_ohlc_pin';         // 0 = the opener floats in the bottom corner
   const SEEN = 'chartdna_ohlc_seen_image';     // signature already processed
   const REFPRICE = 'chartdna_reference_price';  // the app's own "market reference price"
   const REFWRITTEN = 'chartdna_ohlc_ref_price'; // …only rewritten if the user did not set it
@@ -222,7 +222,7 @@
         <button data-act="panel" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg cursor-pointer">پنل استخراج (تاریخ، کالیبراسیون دستی)</button>
         <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="auto" style="width:auto"> استخراج خودکار</label>
         <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="run" style="width:auto"> خودکار به جستجو بده</label>
-        <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="pin" style="width:auto"> دکمهٔ استخراج روی تصویر چسبان</label>
+        <label class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" data-opt="pin" style="width:auto"> دکمهٔ استخراج بالای صفحه چسبان</label>
       </div>`;
     host.insertAdjacentElement('afterend', el);
     card = el;
