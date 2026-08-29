@@ -127,7 +127,26 @@
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, points: [], datasetId: null };
+  const state = { img: null, result: null, templates: null, points: [], datasetId: null, running: false, imgKey: null };
+
+  /* remember the label fields: the autopilot reloads the page once per image */
+  const FORM = 'chartdna_ohlc_form';
+  (function restoreForm() {
+    try {
+      const f = JSON.parse(localStorage.getItem(FORM) || 'null');
+      if (f) { ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0'].forEach((k) => { if (f[k] != null && $(k)) $(k).value = f[k]; }); }
+    } catch (e) { /* ignore */ }
+  })();
+  ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0'].forEach((k) => {
+    const el = $(k); if (!el) return;
+    el.addEventListener('change', () => {
+      try {
+        const f = {};
+        ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0'].forEach((j) => { f[j] = $(j) ? $(j).value : ''; });
+        localStorage.setItem(FORM, JSON.stringify(f));
+      } catch (e) { /* ignore */ }
+    });
+  });
 
   /* ------------------------------------------------------------ open/close */
   const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
@@ -163,11 +182,21 @@
     const m = /src="([^"]+)"/.exec(html);
     if (m) loadImage(m[1], () => status('تصویر از کلیپ‌بورد گرفته شد.'));
   }
+  /* cheap identity of an image source (data: URLs can be megabytes long) */
+  function sigOf(src) {
+    const t = String(src || '');
+    if (!t.length) return '';
+    const sample = t.length > 4096 ? t.slice(0, 2048) + t.slice(-2048) : t;
+    let h = 2166136261;
+    for (let i = 0; i < sample.length; i++) { h ^= sample.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    return t.length + '-' + h.toString(36);
+  }
   function loadImage(src, done) {
     const im = new Image();
     im.crossOrigin = 'anonymous';
     im.onload = () => {
       state.img = im;
+      state.imgKey = sigOf(src);
       try { URL.revokeObjectURL(src); } catch (e) { /* not a blob url */ }
       drawOriginal();
       done && done();
@@ -242,9 +271,11 @@
     cv.width = cv.height = size;
     return { canvas: cv, ctx: cv.getContext('2d', { willReadFrequently: true }) };
   }
-  async function run() {
-    if (!window.ChartDNACV) { status('موتور استخراج (chart-ohlc-engine.js) بارگذاری نشده است.', 'err'); return; }
-    if (!state.img) { status('اول یک تصویر نمودار انتخاب کنید.', 'warn'); return; }
+  async function run(forced) {
+    if (!window.ChartDNACV) { status('موتور استخراج (chart-ohlc-engine.js) بارگذاری نشده است.', 'err'); return null; }
+    if (!state.img) { status('اول یک تصویر نمودار انتخاب کنید.', 'warn'); return null; }
+    if (state.running) return null;
+    state.running = true;
     status(T.busy);
     ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].forEach((id) => { $(id).disabled = true; });
     await new Promise((r) => setTimeout(r, 30));
@@ -262,17 +293,20 @@
       const res = window.ChartDNACV.extract(cx.getImageData(0, 0, w, h), { templates: state.templates, extraRefs: extra });
       res.scale = scale;
       state.result = res;
-      if (!res.ok) { status('خطا: ' + res.error, 'err'); return; }
+      if (!res.ok) { state.running = false; status('خطا: ' + res.error, 'err'); return res; }
       applyDates(res);
       const ms = Math.round(performance.now() - t0);
       report(res, ms);
       try { drawResults(res); } catch (e) { console.warn('preview rendering failed:', e); }
       ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].forEach((id) => { $(id).disabled = !(res.calibration && res.calibration.detected); });
       if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms) + '\nمحور قیمت خوانده نشد؛ مقادیر عددی ساخته نمی‌شوند. برای ثبت دیتاست، ردیف‌های مرجع را دستی کلیک کنید و دوباره استخراج کنید.', 'warn');
+      state.lastImage = forced || state.imgKey || null;
+      return res;
     } catch (err) {
       console.error(err);
       status('خطای غیرمنتظره: ' + (err && err.message ? err.message : err), 'err');
-    }
+      return null;
+    } finally { state.running = false; }
   }
   function setView(v) {
     const chart = $('ohlc-chart'), orig = $('ohlc-orig'), ann = $('ohlc-ann');
@@ -403,11 +437,20 @@
     let list;
     try { list = JSON.parse(raw); } catch (e) { return 'unreadable'; }
     if (!Array.isArray(list)) return 'unreadable';
-    if (list.some((p) => p && p.id === rec.id)) return 'already-there';
-    list.push(rec);
+    let replaced = false;
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      if (!p || p.id !== rec.id) continue;
+      if ((p.points || []).join() === (rec.points || []).join()) return 'already-there';
+      list[i] = rec; replaced = true;              /* only ever touch our own entries */
+    }
+    if (!replaced) list.push(rec);
+    /* keep our own auto-extracted entries bounded: the app's library is the user's */
+    const mine = list.map((p, i) => (p && String(p.id).indexOf('custom_dna_img_') === 0 ? i : -1)).filter((i) => i >= 0);
+    if (mine.length > 24) mine.slice(0, mine.length - 24).reverse().forEach((i) => list.splice(i, 1));
     try { localStorage.setItem(PAT, JSON.stringify(list)); } catch (e) { return 'quota'; }
     try { sessionStorage.removeItem(PAT_PENDING); } catch (e) { }
-    return 'added';
+    return replaced ? 'replaced' : 'added';
   }
   (function flushPendingPattern() {
     let pend = null;
@@ -432,11 +475,16 @@
       o.onerror = () => rej(o.error || new Error('IndexedDB failed'));
     });
   }
-  async function saveDataset(andSearch) {
+  async function saveDataset(andSearch, opts) {
+    opts = opts || {};
+    const quiet = !!opts.silent;
+    const say = (m, k) => { if (!quiet) status(m, k); else console.info('[ohlc]', m); };
     const res = state.result;
-    if (!res || !res.calibration || !res.calibration.detected) { status('اول محور قیمت را بخوانید (یا دستی کالیبره کنید)؛ بدون مقادیر عددی دیتاستی ساخته نمی‌شود.', 'warn'); return; }
-    const name = ($('ohlc-symbol').value || 'Image') + ' ' + $('ohlc-tf').value + ' (from image)';
-    const id = 'img-' + Date.now().toString(36);
+    if (!res || !res.calibration || !res.calibration.detected) { say('اول محور قیمت را بخوانید (یا دستی کالیبره کنید)؛ بدون مقادیر عددی دیتاستی ساخته نمی‌شود.', 'warn'); return { error: 'no-calibration' }; }
+    const wantPattern = opts.pattern === undefined ? $('ohlc-opt-pattern').checked : !!opts.pattern;
+    const replaceSel = opts.replace === undefined ? $('ohlc-opt-replace').checked : !!opts.replace;
+    const name = ($('ohlc-symbol').value || 'Image') + ' ' + $('ohlc-tf').value + ' (from image)' + (opts.nameSuffix || '');
+    const id = opts.id || ('img-' + Date.now().toString(36));
     const ds = window.ChartDNACV.toDataset(res, {
       id, name, symbol: ($('ohlc-symbol').value || 'IMAGE').toUpperCase(), timeframe: $('ohlc-tf').value,
       note: 'بازسازی از تصویر (' + res.quality.meanConfidence + ' میانگین اطمینان، ' + res.bars.length + ' کندل) — ' + (res.calibration.modelChoice || '')
@@ -450,7 +498,7 @@
       });
       db.close();
       let sel = [id];
-      if (!$('ohlc-opt-replace').checked) {
+      if (!replaceSel) {
         try {
           const cur = JSON.parse(localStorage.getItem(SEL) || '[]');
           if (Array.isArray(cur) && cur.length) sel = cur.indexOf(id) < 0 ? cur.concat([id]) : cur;
@@ -458,8 +506,8 @@
       }
       try { localStorage.setItem(SEL, JSON.stringify(sel)); } catch (e) { console.warn(e); }
       let patMsg = '';
-      if ($('ohlc-opt-pattern').checked) {
-        const closes = ds.candles.map((c) => c.close);
+      if (wantPattern) {
+        const closes = (opts.patternPoints && opts.patternPoints.length >= 5) ? opts.patternPoints.slice() : ds.candles.map((c) => c.close);
         if (closes.length >= 5) {
           const pat = {
             id: 'custom_dna_img_' + id, name: name, category: 'Image extraction',
@@ -468,17 +516,39 @@
             notes: 'سری بسته‌شوندهٔ استخراج‌شده از تصویر (' + ds.candles.length + ' کندل، میانگین اطمینان ' + res.quality.meanConfidence + ') — ' + (res.calibration.modelChoice || '')
           };
           const r = appendPattern(pat);
-          patMsg = '\nالگو در کتابخانهٔ DNA: ' + ({ 'added': 'اضافه شد ✓', 'already-there': 'از قبل موجود بود', 'queued-for-next-load': 'در صف (بعد از بارگذاری بعدی اضافه می‌شود)', 'quota': 'ذخیره نشد (حافظهٔ مرورگر پر است)', 'unreadable': 'خوانده نشد', 'no-storage': 'غیرقابل دسترس' }[r] || r);
+          var patState = r;
+          patMsg = '\nالگو در کتابخانهٔ DNA: ' + ({ 'added': 'اضافه شد ✓', 'already-there': 'از قبل موجود بود', 'replaced': 'به‌روزرسانی شد', 'queued-for-next-load': 'در صف (بعد از بارگذاری بعدی اضافه می‌شود)', 'quota': 'ذخیره نشد (حافظهٔ مرورگر پر است)', 'unreadable': 'خوانده نشد', 'no-storage': 'غیرقابل دسترس' }[r] || r);
         }
       }
       if (andSearch) { try { sessionStorage.setItem('chartdna_ohlc_autosearch', id); } catch (e) { } }
       state.datasetId = id;
-      status('دیتاست «' + name + '» ذخیره شد و ' + ($('ohlc-opt-replace').checked ? 'تنها دیتاست انتخاب‌شده است' : 'به دیتاست‌های انتخاب‌شده اضافه شد') + patMsg + (andSearch ? '\nصفحه بارگذاری مجدد می‌شود و جستجو اجرا خواهد شد…' : ''), 'ok');
-      if (andSearch) setTimeout(() => location.reload(), 350);
+      say('دیتاست «' + name + '» ذخیره شد و ' + (replaceSel ? 'تنها دیتاست انتخاب‌شده است' : 'به دیتاست‌های انتخاب‌شده اضافه شد') + patMsg + (andSearch ? '\nصفحه بارگذاری مجدد می‌شود و جستجو اجرا خواهد شد…' : ''), 'ok');
+      if (andSearch && opts.reload !== false) setTimeout(reloadPage, 350);
+      return { id, name, pattern: patState || 'skipped', dataset: ds };
     } catch (err) {
-      status('ذخیره در پایگاه محلی برنامه ناموفق بود: ' + (err && err.message ? err.message : err), 'err');
+      say('ذخیره در پایگاه محلی برنامه ناموفق بود: ' + (err && err.message ? err.message : err), 'err');
+      return { error: String(err && err.message || err) };
     }
   }
+  /* a seam the tests can drive; browsers get the plain reload */
+  function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
+  window.ChartDnaOhlc = {
+    version: 3,
+    engine: () => window.ChartDNACV,
+    busy: () => !!state.running,
+    image: () => state.img,
+    imageKey: () => state.imgKey,
+    result: () => state.result,
+    report: () => window.__ohlcReport || null,
+    sigOf,
+    useImage: (src) => new Promise((done) => { loadImage(src, () => done(state.img)); }),
+    run: (key) => run(key),
+    saveDataset: (andSearch, opts) => saveDataset(andSearch, opts),
+    toCSV: () => window.ChartDNACV.toCSV(state.result),
+    reload: reloadPage,
+    open: () => show(true)
+  };
+
   $('ohlc-save').addEventListener('click', () => saveDataset(false));
   $('ohlc-save-search').addEventListener('click', () => saveDataset(true));
 
