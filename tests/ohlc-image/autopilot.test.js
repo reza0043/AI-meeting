@@ -121,8 +121,7 @@ function patchWindow(win, blobs) {
     }
     get src() { return this.__src; }
   }
-  win.Image = FakeImage;
-  win.HTMLImageElement = FakeImage;
+  win.Image = FakeImage;   /* leave HTMLImageElement alone: the autopilot hooks its src setter */
   win.URL.createObjectURL = (b) => { const u = 'blob:mock/' + (blobs.size + 1); blobs.set(u, b); return u; };
   win.URL.revokeObjectURL = () => { };
   let reloads = 0;
@@ -170,6 +169,23 @@ const ok = (name, cond, info) => {
       return req;
     }
   };
+
+  /* ---------------- page 0: build hygiene (a stale tag = a stale phone) ------ */
+  console.log('0) the app page and the service worker agree');
+  const appHtml = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
+  const swJs = fs.readFileSync(path.join(REPO, 'sw.js'), 'utf8');
+  const pageTags = [...appHtml.matchAll(/chart-ohlc-[\w-]+\.js\?v=(\d+)/g)].map((m) => m[1]);
+  const swTags = [...swJs.matchAll(/chart-ohlc-[\w-]+\.js\?v=(\d+)/g)].map((m) => m[1]);
+  const tags = [...appHtml.matchAll(/<script src="(chart-ohlc-[\w-]+\.js\?v=\d+)" defer>/g)].map((m) => m[1]);
+  ok('the app page loads all three scripts, deferred after the bundle',
+    pageTags.length === 3 && tags.length === 3 &&
+    appHtml.indexOf('assets/index-') < appHtml.indexOf('chart-ohlc-engine.js'),
+    tags.join(' | ') || 'no defer-tagged script found');
+  ok('page and worker agree on one build tag',
+    swTags.length === 3 && new Set(pageTags.concat(swTags)).size === 1,
+    'html v=' + pageTags.join(',') + ' / sw v=' + swTags.join(','));
+  ok('the worker version changes whenever the files do', /VERSION = "chartdna-v2\.[0-9.]+[a-z0-9.-]*"/.test(swJs),
+    (swJs.match(/VERSION = "([^"]+)"/) || [])[1]);
 
   /* ---------------- page 1: upload the picture, watch the pipeline --------- */
   const blobs = new Map();
@@ -303,6 +319,55 @@ const ok = (name, cond, info) => {
   ok('the hand-off survives for the next load and reloads once', win3.__reloads() === 1 && !!plan3 && plan3.tries === 1, JSON.stringify(plan3));
   ok('a reference price typed by the user is never overwritten', win3.localStorage.getItem('chartdna_reference_price') === '1234.5', win3.localStorage.getItem('chartdna_reference_price'));
   ok('still no page errors anywhere', errors.length === 0, errors.join(' | ') || 'none');
+
+  /* --------- page 4: auto extraction OFF -> the manual button must save the day -- */
+  console.log('5) auto extraction off: the card must still be usable by hand');
+  const rec4 = {};
+  const idb4 = {
+    open() {
+      const req = {
+        result: {
+          objectStoreNames: { contains: () => true }, createObjectStore() { },
+          transaction() {
+            const tx = { objectStore: () => ({ put: (rec) => { rec4.rec = rec; return { }; } }), oncomplete: null, onerror: null };
+            setTimeout(() => { if (tx.oncomplete) tx.oncomplete(); }, 0);
+            return tx;
+          },
+          close() { }
+        },
+        onupgradeneeded: null, onsuccess: null, onerror: null
+      };
+      setTimeout(() => { if (req.onupgradeneeded) req.onupgradeneeded({ target: { result: req.result } }); if (req.onsuccess) req.onsuccess(); }, 0);
+      return req;
+    }
+  };
+  const dom4 = await load({ idb: idb4, localStorage: { chartdna_ohlc_auto: '0' } }, new Map());
+  const win4 = dom4.window, doc4 = win4.document;
+  await sleep(400);
+  const f4 = new win4.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
+  Object.defineProperty(doc4.getElementById('app-file'), 'files', { value: [f4], configurable: true });
+  doc4.getElementById('app-file').dispatchEvent(new win4.Event('change', { bubbles: true }));
+  await sleep(1500);
+  const st4 = doc4.getElementById('ohlc-auto-status').textContent;
+  ok('it says the image was seen but auto extraction is off', /دیده شد/.test(st4) && /خاموش/.test(st4), st4.replace(/\n/g, ' | '));
+  ok('nothing was registered while auto is off', !rec4.rec, rec4.rec ? 'a dataset appeared' : 'store untouched');
+  ok('the card offers a manual extract button', !!doc4.querySelector('#ohlc-auto-card [data-act="now"]'), doc4.querySelector('#ohlc-auto-card [data-act="now"]') ? 'present' : 'missing');
+  doc4.querySelector('#ohlc-auto-card [data-act="now"]').click();
+  for (let i = 0; i < 200 && !/کندل$/.test(doc4.getElementById('ohlc-auto-badge').textContent.trim()); i++) await sleep(200);
+  for (let i = 0; i < 60 && !rec4.rec; i++) await sleep(200);   /* the save finishes a moment after the drawing */
+  ok('one tap extracts the app picture anyway', doc4.getElementById('ohlc-auto-badge').textContent.trim() === EXPECT_BARS + ' کندل', doc4.getElementById('ohlc-auto-badge').textContent);
+  ok('and registers the dataset from that tap', !!rec4.rec && rec4.rec.candles.length === EXPECT_BARS, rec4.rec ? rec4.rec.candles.length + ' candles' : 'nothing stored');
+  ok('no page errors on the manual path', errors.length === 0, errors.join(' | ') || 'none');
+
+  /* --------- page 5: a picture that arrives through Image(), not FileReader ---- */
+  console.log('6) an image fed through Image.src (no FileReader) is caught too');
+  const dom5 = await load({ idb: { open: () => ({ onsuccess: null, onerror: null, result: { objectStoreNames: { contains: () => true }, createObjectStore() { }, transaction: () => ({ objectStore: () => ({ put: () => ({ }) }), oncomplete: null }) } }) } }, new Map());
+  const win5 = dom5.window, doc5 = win5.document;
+  await sleep(300);
+  win5.__b64 = fs.readFileSync(IMG).toString('base64');
+  win5.eval("(function(){var i=document.createElement('img');i.id='synthetic';i.src='data:image/jpeg;base64,'+window.__b64;document.getElementById('image-cropper-card').appendChild(i);})()");
+  for (let i = 0; i < 160 && !/کندل$/.test(doc5.getElementById('ohlc-auto-badge').textContent.trim()); i++) await sleep(200);
+  ok('the Image.src hook picked it up', doc5.getElementById('ohlc-auto-badge').textContent.trim() === EXPECT_BARS + ' کندل', doc5.getElementById('ohlc-auto-badge').textContent);
 
   await new Promise((r) => server.close(r));
   console.log('\n' + (fails ? 'FAILED ' + fails + ' of ' + checks + ' checks' : 'all ' + checks + ' checks passed'));

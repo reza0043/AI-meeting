@@ -41,6 +41,8 @@
   /* The app turns every upload/paste/drop into a data: URL through a
      FileReader before it touches it, so that is the one place where every
      entry point (file dialog, drag & drop, clipboard) converges. */
+  let lastSeen = null, current = null, canvasProbe = 0;
+  const tried = Object.create(null);   /* do not hammer a picture that keeps failing */
   const listeners = [];
   function onImageSource(fn) { listeners.push(fn); }
   (function hookFileReader() {
@@ -62,21 +64,90 @@
     };
   })();
 
+  /* also watch Image.src: the app (and anything else on the page) feeds every
+     picture through `new Image()`, so this catches uploads even if the reader
+     path ever changes. */
+  (function hookImageSrc() {
+    const proto = window.HTMLImageElement && window.HTMLImageElement.prototype;
+    if (!proto || proto.__ohlcSrcHooked) return;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'src');
+    if (!desc || !desc.set) return;
+    proto.__ohlcSrcHooked = true;
+    Object.defineProperty(proto, 'src', {
+      configurable: true, enumerable: desc.enumerable,
+      get: desc.get,
+      set: function (v) {
+        try {
+          const t = String(v);
+          if (t.indexOf('data:image') === 0 || t.indexOf('blob:') === 0) listeners.forEach((fn) => fn(t));
+        } catch (e) { /* ignore */ }
+        return desc.set.call(this, v);
+      }
+    });
+  })();
+
   let timer = null, pending = null;
   onImageSource((url) => {
-    if (!autoOn()) { log('auto extraction is switched off in the options'); return; }
+    if (url === current) return;                      /* our own loadImage() round-trip */
+    if ((tried[signature(url)] || 0) > 1) return;
+    lastSeen = { url, at: Date.now(), size: 0 };
+    if (!autoOn()) {
+      log('image seen, but auto extraction is switched off');
+      ensureCard(null, null);
+      statusLine('تصویر برنامه دیده شد (' + Math.round(url.length / 1024) + ' کیلوبایت) — «استخراج خودکار» خاموش است؛ با دکمهٔ روبه‌ریز استخراج کنید.');
+      return;
+    }
     pending = url;
     clearTimeout(timer);
     timer = setTimeout(() => { const u = pending; pending = null; handle(u); }, 500);
   });
 
+  function findAppImage() {
+    const ok = (u) => typeof u === 'string' && (u.indexOf('data:image') === 0 || u.indexOf('blob:') === 0);
+    if (lastSeen && ok(lastSeen.url)) return lastSeen.url;
+    let best = null, area = 0;
+    document.querySelectorAll('img').forEach((im) => {
+      if (isMine(im) || !ok(im.currentSrc || im.src)) return;
+      const a = (im.naturalWidth || im.width) * (im.naturalHeight || im.height);
+      if (a > area) { area = a; best = im.currentSrc || im.src; }
+    });
+    if (best) return best;
+    /* last resort: the picture the app already painted into its own canvas —
+       expensive, so only every ~12s and only while nothing has been measured */
+    const A = api();
+    const host = document.getElementById('image-cropper-card') || document.getElementById('chart-dna-app');
+    if (host && (!A || !A.result()) && Date.now() - canvasProbe > 12000) {
+      canvasProbe = Date.now();
+      host.querySelectorAll('canvas').forEach((c) => {
+      if (isMine(c) || !c.width || c.width < 120) return;
+        try { const u = c.toDataURL('image/jpeg', 0.94); if (u.length > 2000 && u.length > area) { area = u.length; best = u; } } catch (e) { /* tainted canvas */ }
+      });
+    }
+    return best;
+  }
+  async function manualExtract() {
+    const A = api();
+    if (!A) return;
+    const url = findAppImage();
+    if (!url) { statusLine('تصویری در پنل برنامه پیدا نشد — اول در «محیط الگو» تصویر را انتخاب کنید.'); return; }
+    try { if (!A.image() || A.image().src !== url) { /* fall through: handle() loads it anyway */ } } catch (e) { }
+    set(SEEN, '');
+    await handle(url, true);
+  }
+  function statusLine(msg, kind) {
+    const el = document.getElementById('ohlc-auto-status');
+    if (el) { el.textContent = msg; el.style.color = kind === 'warn' ? '#fbbf24' : ''; }
+  }
   function signature(url) { return api() ? api().sigOf(url) : String(url).length; }
 
-  async function handle(url) {
+  async function handle(url, forced) {
     const A = api();
-    if (!A || !A.engine()) { log('engine not loaded'); return; }
+    if (!A || !A.engine() || current === url) return;
     const sig = signature(url);
-    if (get(SEEN) === sig) { log('this image was already processed'); return; }
+    if (!forced && get(SEEN) === sig) { log('this image was already processed'); return; }
+    if ((tried[sig] || 0) > 1) return;
+    tried[sig] = (tried[sig] || 0) + 1;
+    current = url;
     set(SEEN, sig);                                  // claim it before any reload
     while (A.busy()) await sleep(200);
     ensureCard('در حال بارگذاری تصویر…', null);
@@ -84,8 +155,9 @@
       await A.useImage(url);
       ensureCard('در حال اندازه‌گیری پیکسل‌ها…', null);
       const res = await A.run(sig);
-      if (!res || !res.ok) { ensureCard('استخراج انجام نشد: ' + ((res && res.error) || 'خطای نامشخص'), null); return; }
+      if (!res || !res.ok) { current = null; ensureCard('استخراج انجام نشد: ' + ((res && res.error) || 'خطای نامشخص'), null); return; }
       if (!(res.calibration && res.calibration.detected)) {
+        current = null;
         ensureCard('کندل‌ها پیدا شدند (' + res.candles + ') اما محور قیمت خوانده نشد؛ برای عدد دادن، در پنل استخراج چند ردیف مرجع وارد کنید.', null);
         return;
       }
@@ -94,6 +166,7 @@
       if (saved && saved.error) { ensureCard('ثبت دیتاست ناموفق: ' + saved.error, res); return; }
       cardStatus(res, saved);
       syncReferencePrice(res);
+      current = null;
       cropWatch();                                     /* follow the app's crop box */
       if (runOn() && res.bars.length >= 8) {
         sset(PLAN, JSON.stringify({ sig, name: saved.name, id: saved.id, when: Date.now() }));
@@ -102,6 +175,7 @@
         (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : window.location.reload.bind(window.location))();
       }
     } catch (e) {
+      current = null;
       log('extraction failed', e);
       ensureCard('خطای غیرمنتظره در استخراج: ' + (e && e.message ? e.message : e), null);
     }
@@ -134,6 +208,7 @@
       <canvas id="ohlc-auto-chart" style="width:100%;max-height:280px;display:block"></canvas>
       <canvas id="ohlc-auto-ann" style="width:100%;display:none"></canvas>
       <div class="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-800/60">
+        <button data-act="now" class="px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 rounded-lg font-bold cursor-pointer">استخراج از تصویر برنامه</button>
         <button data-act="ann" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg cursor-pointer">مارک‌ها روی تصویر</button>
         <button data-act="csv" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg cursor-pointer">دانلود CSV</button>
         <button data-act="save" class="px-2.5 py-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-lg cursor-pointer">ثبت دیتاست</button>
@@ -147,7 +222,7 @@
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-act],[data-opt]');
       if (!b) return;
-      if (b.dataset.opt) { set(b.dataset.opt === 'auto' ? CFG_AUTO : CFG_RUN, b.checked ? '1' : '0'); return; }
+      if (b.dataset.opt) { set(b.dataset.opt === 'auto' ? CFG_AUTO : CFG_RUN, b.checked ? '1' : '0'); syncOptions(); return; }
       act(b.dataset.act);
     });
     log('card attached to', host.id || String(host.className).split(' ')[0]);
@@ -188,6 +263,12 @@
     return node || null;
   }
   function setStatus(msg) { const el = document.getElementById('ohlc-auto-status'); if (el) el.textContent = msg; }
+  function stateLine() {
+    const A = api();
+    if (A && A.result()) return null;
+    const seen = lastSeen ? 'تصویر برنامه دیده شد' : 'تصویری در پنل برنامه نیست';
+    return seen + ' · استخراج خودکار ' + (autoOn() ? 'روشن' : 'خاموش') + (A && A.busy() ? ' · در حال پردازش…' : '');
+  }
   /* keep the measured numbers on screen and add progress lines below them */
   function note(msg) {
     const el = document.getElementById('ohlc-auto-status');
@@ -303,7 +384,8 @@
   async function act(which) {
     const A = api(), res = A && A.result();
     if (which === 'panel') { A && A.open(); return; }
-    if (!res) { setStatus('هنوز تصویری استخراج نشده است.'); return; }
+    if (which === 'now') { await manualExtract(); return; }
+    if (!res) { note('تصویری استخراج نشده بود؛ حالا خودش استخراج را امتحان می‌کند…'); await manualExtract(); return; }
     if (which === 'ann') {
       const c = document.getElementById('ohlc-auto-ann');
       const shown = c.style.display !== 'none';
@@ -417,7 +499,15 @@
     }).observe(root, { childList: true, subtree: true });
     await sleep(600);
     if (!document.getElementById(CARD_ID)) ensureCard(null, null);
+    const st = stateLine();
+    if (st && !card.__done) setStatus(st);
+    setInterval(() => {
+      const l = stateLine();
+      const el = document.getElementById('ohlc-auto-status');
+      if (l && el && !A_busy() && (Date.now() - (lastSeen ? lastSeen.at : 0) > 4000)) el.textContent = l;
+    }, 2500);
     await runPlan(false);
+    function A_busy() { const A = api(); return !!(A && A.busy()); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(boot, 0));
   else setTimeout(boot, 0);
