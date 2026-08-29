@@ -16,6 +16,8 @@
   const CFG_AUTO = 'chartdna_ohlc_auto';       // extract when the app gets an image
   const CFG_RUN = 'chartdna_ohlc_autorun';     // also feed the DNA search (reloads once)
   const SEEN = 'chartdna_ohlc_seen_image';     // signature already processed
+  const REFPRICE = 'chartdna_reference_price';  // the app's own "market reference price"
+  const REFWRITTEN = 'chartdna_ohlc_ref_price'; // …only rewritten if the user did not set it
   const PLAN = 'chartdna_ohlc_dna_plan';       // click sequence pending after reload
   const CARD_ID = 'ohlc-auto-card';
   const TAB_LABEL = 'تشخیص و ثبت الگو از تصویر';
@@ -91,6 +93,7 @@
       const saved = await A.saveDataset(false, { silent: true, pattern: true, id: datasetId(sig) });
       if (saved && saved.error) { ensureCard('ثبت دیتاست ناموفق: ' + saved.error, res); return; }
       cardStatus(res, saved);
+      syncReferencePrice(res);
       cropWatch();                                     /* follow the app's crop box */
       if (runOn() && res.bars.length >= 8) {
         sset(PLAN, JSON.stringify({ sig, name: saved.name, id: saved.id, when: Date.now() }));
@@ -147,7 +150,25 @@
       if (b.dataset.opt) { set(b.dataset.opt === 'auto' ? CFG_AUTO : CFG_RUN, b.checked ? '1' : '0'); return; }
       act(b.dataset.act);
     });
-    log('card attached to', host.id || host.className.split(' ')[0]);
+    log('card attached to', host.id || String(host.className).split(' ')[0]);
+    verifyPlacement();
+  }
+  /* the app's own card is height-clipped; if we landed inside something clipped,
+     move to the end of the main column instead */
+  function verifyPlacement() {
+    if (!card) return;
+    let r;
+    try { r = card.getBoundingClientRect(); } catch (e) { return; }
+    if (!r || (r.width === 0 && r.height === 0 && !card.parentElement)) return;
+    if (r.height > 8 || r.width > 80) return;
+    if (typeof r.height === 'number' && r.height === 0 && typeof window !== 'undefined' && window.getComputedStyle) {
+      const ph = window.getComputedStyle(card.parentElement || document.body).overflow;
+      if (!/hidden|clip/.test(ph || '')) return;                  /* not clipped: fine (jsdom reports 0) */
+    }
+    const app = document.getElementById('chart-dna-app');
+    const grid = app && (app.querySelector('.grid') || app.querySelector('[class*="grid-cols"]'));
+    const col = grid && grid.children && grid.children[0];
+    if (col && col !== card.parentElement) { col.appendChild(card); log('relocated the card into the main column'); }
   }
   function anchor() {
     const cropper = document.getElementById('image-cropper-card');
@@ -262,7 +283,21 @@
   }
   function cropWatch() {
     clearInterval(cropTimer);
-    cropTimer = setInterval(() => { if (autoOn()) applyCrop(false); }, 1500);
+    cropTimer = setInterval(() => { if (autoOn()) applyCrop(false); verifyPlacement(); }, 1500);
+  }
+
+  /* The app turns its reference price into dollar targets for the matched
+     patterns; the last close we measured from the picture is the honest value
+     for that field — set it unless the user has typed something themselves. */
+  function syncReferencePrice(res) {
+    const last = res.bars[res.bars.length - 1];
+    const v = last && last.close;
+    if (v == null) return;
+    const cur = get(REFPRICE), ours = get(REFWRITTEN);
+    if (cur && cur !== ours) { log('keeping the user reference price', cur); return; }
+    const s2 = String(Math.round(v * 100) / 100);
+    set(REFPRICE, s2); set(REFWRITTEN, s2);
+    note('قیمت مرجع برنامه روی آخرین بسته‌شدنِ اندازه‌گیری‌شده (' + s2 + ') گذاشته شد' + (runOn() ? ' تا هدف‌های دلاری از همین تصویر حساب شوند' : ' — با بازخوانی صفحه اعمال می‌شود'));
   }
 
   async function act(which) {

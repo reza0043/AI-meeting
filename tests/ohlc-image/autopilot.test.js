@@ -203,6 +203,7 @@ const ok = (name, cond, info) => {
   ok('price levels and calibration are reported', /بازهٔ قیمت[\s\S]*کالیبراسیون/.test(status) && /۱ پیکسل|1 پیکسل/.test(status));
   ok('review count is reported', /برای بازبینی/.test(status), status.split('\n')[2]);
 
+  ok('the app reference price now comes from the picture', parseFloat(win.localStorage.getItem('chartdna_reference_price')) > 4000, win.localStorage.getItem('chartdna_reference_price'));
   const rec = idbLog.rec;
   ok('dataset registered in the app store', !!rec && rec.candles.length === EXPECT_BARS, rec ? rec.store || 'market_datasets' : 'none');
   ok('dataset selected for searches', (JSON.parse(win.localStorage.getItem('chartdna_selected_dataset_ids') || '[]')).indexOf(rec.id) >= 0, win.localStorage.getItem('chartdna_selected_dataset_ids'));
@@ -259,7 +260,7 @@ const ok = (name, cond, info) => {
       return req;
     }
   };
-  const dom3 = await load({ idb: idb3mock, localStorage: { chartdna_ohlc_autorun: '0' } }, new Map());
+  const dom3 = await load({ idb: idb3mock, localStorage: { chartdna_ohlc_autorun: '0', chartdna_reference_price: '1234.5' } }, new Map());
   const win3 = dom3.window, doc3 = win3.document;
   await sleep(400);
   const file3 = new win3.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
@@ -300,6 +301,7 @@ const ok = (name, cond, info) => {
   const plan3 = JSON.parse(win3.sessionStorage.getItem('chartdna_ohlc_dna_plan') || 'null');
   ok('the failed attempt opened the app settings itself', win3.__clicks.settings === 1, 'settings clicks ' + win3.__clicks.settings);
   ok('the hand-off survives for the next load and reloads once', win3.__reloads() === 1 && !!plan3 && plan3.tries === 1, JSON.stringify(plan3));
+  ok('a reference price typed by the user is never overwritten', win3.localStorage.getItem('chartdna_reference_price') === '1234.5', win3.localStorage.getItem('chartdna_reference_price'));
   ok('still no page errors anywhere', errors.length === 0, errors.join(' | ') || 'none');
 
   await new Promise((r) => server.close(r));
