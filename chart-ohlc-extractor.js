@@ -1,98 +1,518 @@
-/* Chart OHLC extractor — browser-side computer vision
- * Extracts candle geometry from screenshots and maps pixel-Y to price.
- * No market data/API is used. Price calibration can be automatic (Tesseract OCR)
- * or manual with two visible price/row reference points.
+/* Chart DNA — image → OHLC tool (UI layer)
+ * Runs the pixel-measurement engine (chart-ohlc-engine.js) on a chart
+ * screenshot, shows the reconstructed candlestick chart, and can register the
+ * result as a Chart DNA dataset so the pattern / history search runs on it.
+ * Everything happens in the browser: no image and no number leaves the page.
  */
 (() => {
   const STYLE = `
-  #ohlc-tool{position:fixed;right:18px;bottom:82px;z-index:2147483647;font-family:Inter,system-ui,sans-serif}
-  #ohlc-open{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:14px;padding:11px 14px;box-shadow:0 8px 30px #0008;cursor:pointer;font-weight:700}
-  #ohlc-modal{display:none;position:fixed;inset:0;background:#020617cc;backdrop-filter:blur(8px);z-index:2147483647;align-items:center;justify-content:center;padding:16px}
-  #ohlc-card{width:min(980px,96vw);max-height:92vh;overflow:auto;background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:18px;box-shadow:0 25px 80px #000a}
-  #ohlc-card h2{margin:0 0 8px;font-size:20px}.ohlc-muted{color:#94a3b8;font-size:13px;line-height:1.6}
-  .ohlc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ohlc-box{border:1px solid #243244;border-radius:12px;padding:12px;background:#0f172a}
-  .ohlc-box label{display:block;font-size:12px;color:#94a3b8;margin-bottom:6px}.ohlc-box input{width:100%;box-sizing:border-box;background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:9px;padding:9px}
-  .ohlc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ohlc-actions button{border:0;border-radius:10px;padding:10px 13px;cursor:pointer;font-weight:700}
+  #ohlc-tool{position:fixed;right:18px;bottom:82px;z-index:2147483647;font-family:Vazirmatn,Inter,system-ui,sans-serif}
+  #ohlc-open{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:14px;padding:11px 14px;box-shadow:0 8px 30px #0008;cursor:pointer;font-weight:700;font-family:inherit}
+  #ohlc-modal{display:none;position:fixed;inset:0;background:#020617e6;backdrop-filter:blur(8px);z-index:2147483647;align-items:flex-start;justify-content:center;padding:14px;overflow:auto}
+  #ohlc-card{width:min(1080px,97vw);background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-shadow:0 25px 80px #000a;font-family:inherit}
+  #ohlc-card h2{margin:0 0 6px;font-size:19px}
+  .ohlc-muted{color:#94a3b8;font-size:12.5px;line-height:1.7}
+  .ohlc-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:12px}
+  .ohlc-box{border:1px solid #243244;border-radius:12px;padding:11px;background:#0f172a}
+  .ohlc-box h3{margin:0 0 8px;font-size:13px;color:#cbd5e1}
+  .ohlc-box label{display:block;font-size:11.5px;color:#94a3b8;margin:7px 0 4px}
+  .ohlc-box input,.ohlc-box select{width:100%;box-sizing:border-box;background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:9px;padding:8px;font-size:12.5px;font-family:inherit}
+  .ohlc-drop{border:1.5px dashed #334155;border-radius:12px;padding:16px;text-align:center;color:#94a3b8;font-size:13px;cursor:pointer}
+  .ohlc-drop.ohlc-over{border-color:#10b981;color:#a7f3d0}
+  .ohlc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .ohlc-actions button{border:0;border-radius:10px;padding:10px 13px;cursor:pointer;font-weight:700;font-family:inherit;font-size:12.5px}
+  .ohlc-actions button:disabled{opacity:.45;cursor:not-allowed}
   .ohlc-primary{background:#10b981;color:#04130e}.ohlc-secondary{background:#1e293b;color:#e2e8f0}.ohlc-danger{background:#7f1d1d;color:#fecaca}
-  #ohlc-preview{max-width:100%;max-height:360px;margin-top:12px;border-radius:10px;border:1px solid #334155;display:none}
-  #ohlc-status{margin-top:10px;color:#a7f3d0;font-size:13px;white-space:pre-wrap}.ohlc-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}.ohlc-table th,.ohlc-table td{padding:6px;border-bottom:1px solid #1e293b;text-align:right}.ohlc-table th{color:#94a3b8}
-  @media(max-width:700px){.ohlc-grid{grid-template-columns:1fr}#ohlc-tool{right:10px;bottom:76px}}
+  .ohlc-refrow{display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;margin-top:8px}
+  .ohlc-refrow input{width:100%;box-sizing:border-box;background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:9px;padding:8px;font:inherit}
+  .ohlc-refrow button{white-space:nowrap;padding:8px 10px;font-size:12px}
+  #ohlc-points input{background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:6px;font:inherit}
+  #ohlc-points button{background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;padding:4px 8px;font-size:11px;cursor:pointer}
+  #ohlc-orig,#ohlc-ann{max-width:100%;border-radius:10px;border:1px solid #334155;display:block;margin-top:8px}
+  #ohlc-chart{width:100%;height:300px;border:1px solid #243244;border-radius:10px;background:#0b1220;display:block;margin-top:8px}
+  #ohlc-status{margin-top:10px;color:#a7f3d0;font-size:12.5px;white-space:pre-wrap;line-height:1.7}
+  .ohlc-warn{color:#fbbf24}.ohlc-err{color:#fca5a5}
+  .ohlc-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .ohlc-table th,.ohlc-table td{padding:5px 6px;border-bottom:1px solid #1e293b;text-align:right}
+  .ohlc-table th{color:#94a3b8;font-weight:600}
+  .ohlc-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;margin-top:8px}
+  .ohlc-kv b{color:#94a3b8;font-weight:600}
+  .ohlc-tabs{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .ohlc-tabs button{background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:9px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit}
+  .ohlc-tabs button[aria-selected=true]{background:#10b981;color:#04130e;border-color:#10b981;font-weight:700}
+  .ohlc-hidden{display:none!important}
+  @media(max-width:820px){.ohlc-grid{grid-template-columns:1fr}#ohlc-tool{right:10px;bottom:74px}}
   `;
-  const style=document.createElement('style');style.textContent=STYLE;document.head.appendChild(style);
+  const T = {
+    open: '📈 استخراج OHLC از تصویر',
+    title: 'بازسازی OHLC از اسکرین‌shot نمودار',
+    sub: 'اندازه‌گیری روی پیکسل‌ها (computer vision). هیچ قیمتی از اینترنت یا حافظهٔ مدل نمی‌آید؛ هر چیزی که در تصویر نباشد خالی می‌ماند.',
+    run: 'استخراج کندل‌ها', csv: 'دانلود CSV', png: 'دانلود تصویر حاشیه‌نویسی‌شده',
+    save: 'ثبت به‌عنوان دیتاست Chart DNA', saveSearch: 'ثبت و اجرای جستجو', close: 'بستن',
+    busy: 'در حال پردازش…', grab: 'استفاده از تصویری که در برنامه آپلود کرده‌اید',
+    calibNote: 'برای کالیبراسیون دستی، روی خط‌های راهنمای محور قیمت در تصویر کلیک کنید و مقدارش را وارد کنید.'
+  };
+  const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
 
-  const root=document.createElement('div');root.id='ohlc-tool';root.innerHTML=`<button id="ohlc-open">📈 استخراج OHLC</button>`;document.body.appendChild(root);
-  const modal=document.createElement('div');modal.id='ohlc-modal';modal.innerHTML=`
-    <div id="ohlc-card">
-      <h2>استخراج OHLC از تصویر نمودار</h2>
-      <div class="ohlc-muted">Computer Vision روی خود پیکسل‌های تصویر انجام می‌شود. هیچ قیمت یا کندلی از اینترنت دریافت نمی‌شود. برای قیمت دقیق، دو نقطه مرجع محور Y لازم است.</div>
-      <div class="ohlc-grid" style="margin-top:12px">
-        <div class="ohlc-box"><label>تصویر نمودار</label><input id="ohlc-file" type="file" accept="image/*"></div>
-        <div class="ohlc-box"><label>کالیبراسیون قیمت (اختیاری؛ اگر OCR جواب نداد)</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><input id="y1" placeholder="Y پیکسلی مرجع 1"><input id="p1" placeholder="قیمت مرجع 1"><input id="y2" placeholder="Y پیکسلی مرجع 2"><input id="p2" placeholder="قیمت مرجع 2"></div></div>
+  const rootEl = document.createElement('div');
+  rootEl.id = 'ohlc-tool';
+  rootEl.innerHTML = `<button id="ohlc-open" title="استخراج OHLC از اسکرین‌شات نمودار">${T.open}</button>`;
+  document.body.appendChild(rootEl);
+
+  const modal = document.createElement('div');
+  modal.id = 'ohlc-modal';
+  modal.innerHTML = `
+  <div id="ohlc-card" dir="rtl">
+    <h2>${T.title}</h2>
+    <div class="ohlc-muted">${T.sub}</div>
+    <div class="ohlc-grid" style="margin-top:12px">
+      <div>
+        <div class="ohlc-drop" id="ohlc-drop">تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)
+          <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
+        </div>
+        <div class="ohlc-actions" style="margin-top:8px">
+          <button class="ohlc-secondary" id="ohlc-grab">${T.grab}</button>
+          <button class="ohlc-primary" id="ohlc-run">${T.run}</button>
+        </div>
+        <canvas id="ohlc-orig" class="ohlc-hidden"></canvas>
+        <canvas id="ohlc-ann" class="ohlc-hidden"></canvas>
+        <div class="ohlc-tabs">
+          <button data-view="chart" aria-selected="true">کندل‌های بازسازی‌شده</button>
+          <button data-view="orig">تصویر اصلی</button>
+          <button data-view="ann">تصویر با مارک‌ها</button>
+        </div>
+        <canvas id="ohlc-chart" width="1000" height="300"></canvas>
       </div>
-      <div class="ohlc-actions">
-        <button class="ohlc-primary" id="ohlc-run">استخراج کندل‌ها</button>
-        <button class="ohlc-secondary" id="ohlc-ocr">OCR محور قیمت</button>
-        <button class="ohlc-secondary" id="ohlc-csv" disabled>دانلود CSV</button>
-        <button class="ohlc-secondary" id="ohlc-png" disabled>دانلود تصویر Annotated</button>
-        <button class="ohlc-danger" id="ohlc-close">بستن</button>
+      <div>
+        <div class="ohlc-box">
+          <h3>برچسب دیتاست</h3>
+          <label>نماد (از خود تصویر، فقط برای نام‌گذاری)</label><input id="ohlc-symbol" placeholder="XAUUSD">
+          <label>تایم‌فریم</label>
+          <select id="ohlc-tf"><option>M1</option><option>M5</option><option>M15</option><option>M30</option><option selected>H1</option><option>H4</option><option>D1</option></select>
+          <label>تاریخ اولین کندل (اختیاری — بدون آن Date خالی می‌ماند)</label><input id="ohlc-d0" type="date">
+          <label>تاریخ آخرین کندل (اختیاری؛ اگر پر شود تقسیم‌بندی روزها از روی آن حساب می‌شود)</label><input id="ohlc-d1" type="date">
+          <label>شروع ساعت اولین کندل (اختیاری، HH:MM — برای پر کردن Time)</label><input id="ohlc-t0" placeholder="00:00">
+        </div>
+        <div class="ohlc-box" style="margin-top:10px">
+          <h3>اتصال به موتور Chart DNA</h3>
+          <label style="display:flex;gap:7px;align-items:center;margin:2px 0"><input type="checkbox" id="ohlc-opt-pattern" checked style="width:auto"><span>الگوی بازسازی‌شده (سری قیمت بسته‌شدن) به کتابخانهٔ الگوها اضافه شود تا جستجوی DNA روی آن کار کند</span></label>
+          <label style="display:flex;gap:7px;align-items:center;margin:2px 0"><input type="checkbox" id="ohlc-opt-replace" style="width:auto"><span>فقط این دیتاست انتخاب شود (اگر تیک نزند، به انتخاب‌های فعلی اضافه می‌شود)</span></label>
+        </div>
+        <div class="ohlc-box" style="margin-top:10px">
+          <h3>کالیبراسیون محور قیمت</h3>
+          <div class="ohlc-muted">${T.calibNote}</div>
+          <div class="ohlc-refrow">
+            <input id="ohlc-ref-row" type="number" step="0.1" placeholder="ردیف پیکسلی (y)">
+            <input id="ohlc-ref-price" type="number" step="0.01" placeholder="قیمت آن ردیف">
+            <button class="ohlc-secondary" id="ohlc-ref-add" type="button">افزودن مرجع</button>
+            <button class="ohlc-secondary" id="ohlc-ref-clear" type="button">پاک‌کردن</button>
+          </div>
+          <div id="ohlc-points" class="ohlc-kv"></div>
+        </div>
+        <div class="ohlc-box" style="margin-top:10px">
+          <h3>خروجی</h3>
+          <div id="ohlc-status" class="ohlc-muted">هنوز تصویری انتخاب نشده.</div>
+        </div>
       </div>
-      <div id="ohlc-status"></div>
-      <img id="ohlc-preview">
-      <div id="ohlc-results"></div>
-    </div>`;document.body.appendChild(modal);
+    </div>
+    <div id="ohlc-table"></div>
+    <div class="ohlc-actions">
+      <button class="ohlc-secondary" id="ohlc-csv" disabled>${T.csv}</button>
+      <button class="ohlc-secondary" id="ohlc-png" disabled>${T.png}</button>
+      <button class="ohlc-primary" id="ohlc-save" disabled>${T.save}</button>
+      <button class="ohlc-primary" id="ohlc-save-search" disabled>${T.saveSearch}</button>
+      <button class="ohlc-danger" id="ohlc-close">${T.close}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
 
-  const $=id=>document.getElementById(id); let image=null, rows=[], annotatedUrl=null;
-  $('ohlc-open').onclick=()=>modal.style.display='flex'; $('ohlc-close').onclick=()=>modal.style.display='none';
-  modal.addEventListener('click',e=>{if(e.target===modal)modal.style.display='none'});
-  $('ohlc-file').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;image=new Image();image.onload=()=>{const c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;const x=c.getContext('2d');x.drawImage(image,0,0);$('ohlc-preview').src=c.toDataURL('image/png');$('ohlc-preview').style.display='block';setStatus(`تصویر آماده شد: ${image.naturalWidth}×${image.naturalHeight}`)};image.src=URL.createObjectURL(f)};
-  function setStatus(s){$('ohlc-status').textContent=s}
-  function download(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+  const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
+  const state = { img: null, result: null, templates: null, points: [], datasetId: null };
 
-  function calibration(){
-    const y1=parseFloat($('y1').value),p1=parseFloat($('p1').value),y2=parseFloat($('y2').value),p2=parseFloat($('p2').value);
-    if([y1,p1,y2,p2].every(Number.isFinite)&&y1!==y2){const a=(p2-p1)/(y2-y1),b=p1-a*y1;return y=>a*y+b}
-    return null;
+  /* ------------------------------------------------------------ open/close */
+  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
+  $('ohlc-open').addEventListener('click', () => show(true));
+  rootEl.addEventListener('click', (e) => { if (e.target === rootEl) show(false); });
+  $('ohlc-close').addEventListener('click', () => show(false));
+  modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
+
+  /* ------------------------------------------------------------ image input */
+  const drop = $('ohlc-drop');
+  drop.addEventListener('click', () => $('ohlc-file').click());
+  $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+  ['dragover', 'dragenter'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('ohlc-over'); }));
+  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('ohlc-over')));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+    else if (e.dataTransfer.getData('text/html')) grabHtmlImage(e.dataTransfer.getData('text/html'));
+  });
+  document.addEventListener('paste', (e) => {
+    const it = e.clipboardData && e.clipboardData.items;
+    if (!it) return;
+    for (let i = 0; i < it.length; i++) if (it[i].type.indexOf('image') === 0) { loadFile(it[i].getAsFile()); show(true); break; }
+  });
+  function loadFile(file) {
+    if (!file || !/^image\//.test(file.type || 'image')) { status('فایل انتخاب‌شده تصویر نیست.', 'err'); return; }
+    const url = URL.createObjectURL(file);
+    loadImage(url, () => status(`تصویر بارگذاری شد: ${state.img.naturalWidth}×${state.img.naturalHeight} پیکسل.`));
+  }
+  function grabHtmlImage(html) {
+    const m = /src="([^"]+)"/.exec(html);
+    if (m) loadImage(m[1], () => status('تصویر از کلیپ‌بورد گرفته شد.'));
+  }
+  function loadImage(src, done) {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => {
+      state.img = im;
+      try { URL.revokeObjectURL(src); } catch (e) { /* not a blob url */ }
+      drawOriginal();
+      done && done();
+    };
+    im.onerror = () => status('بارگذاری تصویر ناموفق بود (ممکن است blob منقضی شده باشد؛ تصویر را دوباره انتخاب کنید).', 'err');
+    im.src = src;
+  }
+  function drawOriginal() {
+    const cv = $('ohlc-orig'), im = state.img;
+    if (!im) return;
+    const s = Math.min(1, 1400 / Math.max(im.naturalWidth, 1));
+    cv.width = Math.round(im.naturalWidth * s); cv.height = Math.round(im.naturalHeight * s);
+    cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+    setView('orig');
+  }
+  $('ohlc-grab').addEventListener('click', () => {
+    const imgs = Array.prototype.slice.call(document.querySelectorAll('img'))
+      .filter((i) => /^(blob:|data:)/.test(i.currentSrc || i.src) && i.naturalWidth > 260);
+    if (!imgs.length) { status('تصویری که داخل برنامه آپلود کرده‌اید پیدا نشد؛ فایل را همین‌جا انتخاب کنید.', 'warn'); return; }
+    imgs.sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight);
+    state.img = imgs[0];
+    drawOriginal();
+    status('تصویر از پنل برنامه برداشته شد: ' + imgs[0].naturalWidth + '×' + imgs[0].naturalHeight + ' پیکسل.');
+  });
+
+  /* --------------------------------------------------- manual axis anchors */
+  $('ohlc-orig').addEventListener('click', (e) => {
+    const cv = $('ohlc-orig'), r = cv.getBoundingClientRect();
+    const sc = state.img ? state.img.naturalHeight / cv.height : 1;
+    const y = Math.round((e.clientY - r.top) * sc);
+    state.points.push({ row: y, price: '', source: 'manual-click' });
+    renderPoints();
+    status('نقطهٔ مرجع در ردیف ' + y + ' اضافه شد — قیمتش را وارد کنید.');
+  });
+  /* typing the row works when clicking is impractical (retina shots, no pointer) */
+  $('ohlc-ref-add').addEventListener('click', () => {
+    const row = parseFloat($('ohlc-ref-row').value), price = parseFloat($('ohlc-ref-price').value);
+    if (!isFinite(row) || row <= 0) { status('شمارهٔ ردیف معتبر نیست.', 'err'); return; }
+    state.points.push({ row: Math.round(row), price: isFinite(price) ? String(price) : '', source: 'manual-typed' });
+    renderPoints();
+    $('ohlc-ref-row').value = ''; $('ohlc-ref-price').value = '';
+    status('مرجع دستی در ردیف ' + Math.round(row) + (isFinite(price) ? ' با قیمت ' + price : ' (بدون قیمت)') +
+      ' ثبت شد. «استخراج کندل‌ها» را دوباره بزنید تا اعمال شود.');
+  });
+  $('ohlc-ref-clear').addEventListener('click', () => {
+    state.points = []; renderPoints();
+    status('همهٔ مراجع دستی پاک شد — استخراج بعدی فقط از برچسب‌های خود محور استفاده می‌کند.');
+  });
+  function renderPoints() {
+    const box = $('ohlc-points');
+    if (!state.points.length) { box.innerHTML = ''; return; }
+    box.innerHTML = state.points.map((p, i) =>
+      `<b>ردیف ${p.row}</b><span><input data-i="${i}" type="number" step="0.01" placeholder="قیمت این خط" value="${p.price}"><button data-del="${i}" type="button">حذف</button></span>`).join('');
+    box.querySelectorAll('button[data-del]').forEach((b) => b.addEventListener('click', () => {
+      state.points.splice(+b.dataset.del, 1); renderPoints();
+      status('مرجع حذف شد — «استخراج کندل‌ها» را دوباره بزنید.');
+    }));
+    box.querySelectorAll('input').forEach((inp) => inp.addEventListener('input', (e) => {
+      state.points[+e.target.dataset.i].price = e.target.value;
+    }));
   }
 
-  function extract(){
-    if(!image){setStatus('ابتدا تصویر را انتخاب کن.');return}
-    const c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);
-    const d=ctx.getImageData(0,0,c.width,c.height).data,w=c.width,h=c.height;
-    const red=new Uint8Array(w*h), teal=new Uint8Array(w*h);
-    for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4,r=d[i],g=d[i+1],b=d[i+2];
-      red[y*w+x]=(r>100&&r>g*1.30&&r>b*1.18)?1:0;
-      teal[y*w+x]=(g>65&&g>r*1.20&&g>b*0.88)?1:0;
+  /* --------------------------------------------------------------- run it */
+  $('ohlc-run').addEventListener('click', run);
+  function status(msg, kind) {
+    const el = $('ohlc-status');
+    el.className = kind === 'err' ? 'ohlc-err' : kind === 'warn' ? 'ohlc-warn' : '';
+    el.textContent = msg;
+  }
+  function makeCtx(size) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    return { canvas: cv, ctx: cv.getContext('2d', { willReadFrequently: true }) };
+  }
+  async function run() {
+    if (!window.ChartDNACV) { status('موتور استخراج (chart-ohlc-engine.js) بارگذاری نشده است.', 'err'); return; }
+    if (!state.img) { status('اول یک تصویر نمودار انتخاب کنید.', 'warn'); return; }
+    status(T.busy);
+    ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].forEach((id) => { $(id).disabled = true; });
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      if (!state.templates) state.templates = window.ChartDNACVTemplateCache || (window.ChartDNACVTemplateCache = window.ChartDNACV.canvasTemplates(makeCtx));
+      const im = state.img;
+      const cap = 3200, scale = Math.max(1, im.naturalWidth, im.naturalHeight) > cap ? cap / Math.max(im.naturalWidth, im.naturalHeight) : 1;
+      const w = Math.max(80, Math.round(im.naturalWidth * scale)), h = Math.max(60, Math.round(im.naturalHeight * scale));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const cx = cv.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(im, 0, 0, w, h);
+      const t0 = performance.now();
+      const extra = state.points.filter((p) => p.price !== '' && +p.price > 0)
+        .map((p) => ({ row: p.row / scale, price: +p.price, source: p.source || 'manual-click' }));
+      const res = window.ChartDNACV.extract(cx.getImageData(0, 0, w, h), { templates: state.templates, extraRefs: extra });
+      res.scale = scale;
+      state.result = res;
+      if (!res.ok) { status('خطا: ' + res.error, 'err'); return; }
+      applyDates(res);
+      const ms = Math.round(performance.now() - t0);
+      report(res, ms);
+      try { drawResults(res); } catch (e) { console.warn('preview rendering failed:', e); }
+      ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].forEach((id) => { $(id).disabled = !(res.calibration && res.calibration.detected); });
+      if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms) + '\nمحور قیمت خوانده نشد؛ مقادیر عددی ساخته نمی‌شوند. برای ثبت دیتاست، ردیف‌های مرجع را دستی کلیک کنید و دوباره استخراج کنید.', 'warn');
+    } catch (err) {
+      console.error(err);
+      status('خطای غیرمنتظره: ' + (err && err.message ? err.message : err), 'err');
     }
-    // Candle chart region heuristic: exclude browser/UI edges and obvious text-heavy top area.
-    const y0=Math.max(25,Math.floor(h*.06)), y1=Math.floor(h*.82), x0=Math.floor(w*.02), x1=Math.floor(w*.92);
-    const col=new Int32Array(x1-x0);
-    for(let x=x0;x<x1;x++)for(let y=y0;y<y1;y++){if((red[y*w+x]||teal[y*w+x]) && !(y>h*.50&&y<h*.57))col[x-x0]++}
-    // Find candle centers as local maxima, then merge very close maxima.
-    const centers=[];for(let x=1;x<col.length-1;x++)if(col[x]>=3&&col[x]>=col[x-1]&&col[x]>=col[x+1])centers.push(x+x0);
-    const merged=[];for(const x of centers){if(!merged.length||x-merged[merged.length-1]>2)merged.push(x);else if(col[x-x0]>col[merged[merged.length-1]-x0])merged[merged.length-1]=x}
-    // Keep only centers belonging to clusters; typical screenshots have 2–8 px candle spacing.
-    const xs=[];for(const x of merged){if(!xs.length||x-xs[xs.length-1]>=3)xs.push(x)}
-    const priceFn=calibration();
-    if(!priceFn){setStatus('کندل‌ها پیدا شدند، اما کالیبراسیون قیمت نداریم. دو نقطه Y/Price وارد کن و دوباره Extract را بزن.\nمثال: Y=148 → 4600 و Y=248 → 4500');return}
-    rows=[];
-    for(let n=0;n<xs.length;n++){
-      const x=xs[n], xa=Math.max(x0,x-2),xb=Math.min(x1-1,x+2), rr=[],tt=[];
-      for(let y=y0;y<y1;y++){let r=0,t=0;for(let xx=xa;xx<=xb;xx++){r+=red[y*w+xx];t+=teal[y*w+xx]}if(r||t) {rr.push([y,r]);tt.push([y,t])}}
-      const sr=rr.reduce((s,v)=>s+v[1],0), st=tt.reduce((s,v)=>s+v[1],0); if(!sr&&!st)continue;
-      const bull=st>sr, arr=bull?tt:rr, ys=arr.map(v=>v[0]);if(!ys.length)continue;
-      const high=Math.min(...ys),low=Math.max(...ys);const body=arr.filter(v=>v[1]>=2).map(v=>v[0]);const bt=body.length?Math.min(...body):high,bb=body.length?Math.max(...body):low;
-      const oy=bull?bb:bt,cy=bull?bt:bb;const O=priceFn(oy),C=priceFn(cy),H=priceFn(high),L=priceFn(low);
-      rows.push({Candle:rows.length+1,Open:+O.toFixed(2),High:+Math.max(H,O,C).toFixed(2),Low:+Math.min(L,O,C).toFixed(2),Close:+C.toFixed(2),Direction:bull?'Bullish':'Bearish',Confidence:+Math.max(.35,Math.min(.99,(body.length?0.85:0.6)*(Math.min(1,(Math.abs(C-O)+0.01)/(Math.abs(H-L)+0.01))))).toFixed(2)});
-    }
-    drawAnnotated(c,xs,rows,priceFn);renderRows();$('ohlc-csv').disabled=!rows.length;$('ohlc-png').disabled=!annotatedUrl;
-    setStatus(`${rows.length} کندل استخراج شد.\nتوجه: داده از تصویر بازسازی شده و برای بک‌تست دقیق مالی مناسب نیست.`)
+  }
+  function setView(v) {
+    const chart = $('ohlc-chart'), orig = $('ohlc-orig'), ann = $('ohlc-ann');
+    chart.classList.toggle('ohlc-hidden', v !== 'chart');
+    orig.classList.toggle('ohlc-hidden', v !== 'orig');
+    ann.classList.toggle('ohlc-hidden', v !== 'ann');
+    modal.querySelectorAll('.ohlc-tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === v)));
+    if (v === 'orig') orig.style.display = 'block';
+  }
+  modal.querySelectorAll('.ohlc-tabs button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+  function drawResults(res) {
+    const chart = $('ohlc-chart');
+    chart.width = Math.min(1400, Math.max(600, res.bars.length * 4));
+    chart.height = 300;
+    window.ChartDNACV.renderChart(chart, res.bars, { title: res.bars.length + ' candle — reconstructed from pixels' });
+    const cv = document.createElement('canvas');
+    try { window.ChartDNACV.renderAnnotated(cv, state.img, res); $('ohlc-ann').width = cv.width; $('ohlc-ann').height = cv.height; $('ohlc-ann').getContext('2d').drawImage(cv, 0, 0); } catch (e) { console.warn(e); }
+    setView('chart');
+    const rows = res.bars.slice(0, 14).concat(res.bars.length > 16 ? [{ candle: '…' }] : []).concat(res.bars.slice(-4));
+    $('ohlc-table').innerHTML = '<table class="ohlc-table"><thead><tr><th>#</th><th>Date</th><th>O</th><th>H</th><th>L</th><th>C</th><th>Dir</th><th>Conf</th><th>note</th></tr></thead><tbody>' +
+      rows.map((b) => b.candle === '…' ? '<tr><td colspan=9 style="text-align:center">…</td></tr>'
+        : `<tr><td>${b.candle}</td><td>${b.date || ''}</td><td>${f(b.open)}</td><td>${f(b.high)}</td><td>${f(b.low)}</td><td>${f(b.close)}</td><td>${b.direction || ''}</td><td>${b.confidence == null ? '' : b.confidence}</td><td style="text-align:right;color:#94a3b8">${(b.notes || []).join('; ')}</td></tr>`).join('') +
+      '</tbody></table>';
+  }
+  const f = (v) => v == null ? '—' : v.toFixed(2);
+
+  /* ------------------------------------------------------------- dates ---- */
+  /* Only from anchors the user supplies — never invented. */
+  function applyDates(res) {
+    const d0 = $('ohlc-d0').value, d1 = $('ohlc-d1').value, t0 = $('ohlc-t0').value;
+    const ok = res.bars.filter((b) => b.status === 'ok');
+    if (!ok.length) return;
+    const tf = $('ohlc-tf').value, mins = ({ M1: 1, M5: 5, M15: 15, M30: 30, H1: 60, H4: 240, D1: 1440 })[tf] || 60;
+    if (d0 && d1) {
+      const a = Date.parse(d0 + 'T00:00:00Z'), b = Date.parse(d1 + 'T00:00:00Z');
+      let days = 0, t = a;
+      const list = [];
+      while (t <= b && days < 400) { list.push(t); t += 86400000; days++; }
+      const trading = list.filter((x) => { const d = new Date(x).getUTCDay(); return d !== 0 && d !== 6; });
+      if (trading.length >= 1) {
+        const perDay = (ok.length - 1) / Math.max(1, trading.length - 1);
+        ok.forEach((bar, i) => {
+          const di = Math.min(trading.length - 1, Math.round(i / perDay));
+          bar.date = new Date(trading[di]).toISOString().slice(0, 10);
+          bar.notes.push('date interpolated between the two dates you provided');
+        });
+        res.dateMode = 'two anchors';
+      }
+    } else if (d0) {
+      const start = Date.parse(d0 + 'T00:00:00Z' + (t0 ? '' : ''));
+      let t = Date.parse(d0 + 'T' + (/^\d\d:\d\d$/.test(t0) ? t0 : '00:00') + ':00Z');
+      ok.forEach((bar, i) => {
+        const d = new Date(t + i * mins * 60000);
+        bar.date = d.toISOString().slice(0, 10);
+        bar.time = d.toISOString().slice(11, 16);
+        if (i === 0) bar.notes.push('clock-time assumption from the anchor you provided');
+      });
+      res.dateMode = 'start anchor + timeframe (' + mins + ' min)';
+      void start;
+    } else if (res.geometry.verticalGridlines && res.geometry.verticalGridlines.length >= 2) {
+      res.dateMode = 'no date anchor (axis gridlines are available as anchors)';
+    } else res.dateMode = 'no';
   }
 
-  function drawAnnotated(c,xs,data,priceFn){const z=document.createElement('canvas');z.width=c.width;z.height=c.height;const q=z.getContext('2d');q.drawImage(c,0,0);q.font='bold 12px sans-serif';q.textAlign='center';data.forEach((r,i)=>{const x=xs[i];const y=12;q.fillStyle='#fbbf24';q.fillText(String(r.Candle),x,y+12);q.beginPath();q.moveTo(x,25);q.lineTo(x,40);q.strokeStyle='#fbbf24';q.stroke()});annotatedUrl=z.toDataURL('image/png');$('ohlc-preview').src=annotatedUrl}
-  function renderRows(){const show=rows.slice(0,80);$('ohlc-results').innerHTML=`<div class="ohlc-muted" style="margin-top:12px">نمایش ${show.length} ردیف اول از ${rows.length}</div><table class="ohlc-table"><thead><tr><th>Candle</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Direction</th><th>Confidence</th></tr></thead><tbody>${show.map(r=>`<tr><td>${r.Candle}</td><td>${r.Open}</td><td>${r.High}</td><td>${r.Low}</td><td>${r.Close}</td><td>${r.Direction}</td><td>${r.Confidence}</td></tr>`).join('')}</tbody></table>`}
-  $('ohlc-run').onclick=extract;
-  $('ohlc-csv').onclick=()=>{if(!rows.length)return;const cols=['Candle','Open','High','Low','Close','Direction','Confidence'];const csv=[cols.join(','),...rows.map(r=>cols.map(k=>r[k]).join(','))].join('\n');download('chart_OHLC_extracted.csv',new Blob([csv],{type:'text/csv;charset=utf-8'}))};
-  $('ohlc-png').onclick=()=>{if(annotatedUrl)download('chart_OHLC_annotated.png',dataURLtoBlob(annotatedUrl))};
-  function dataURLtoBlob(u){const [m,b]=u.split(',');const bin=atob(b),arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type:m.match(/:(.*?);/)[1]})}
-  $('ohlc-ocr').onclick=async()=>{if(!image){setStatus('ابتدا تصویر را انتخاب کن.');return}setStatus('OCR محور قیمت در حال بارگذاری است...');try{if(!window.Tesseract){await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s)})}const {data}=await Tesseract.recognize(image,'eng',{logger:m=>{if(m.status==='recognizing text')setStatus(`OCR: ${Math.round((m.progress||0)*100)}%`)}});const nums=(data.words||[]).filter(x=>/\d/.test(x.text)).map(x=>({text:x.text.trim(),y:(x.bbox.y0+x.bbox.y1)/2})).filter(x=>/\d{3,}(?:[.,]\d+)?/.test(x.text));setStatus(nums.length?`OCR شناسایی کرد:\n${nums.slice(0,20).map(x=>`${x.text} @ Y≈${Math.round(x.y)}`).join('\n')}\n\nدر صورت صحت، دو مورد را در کادر کالیبراسیون وارد کن.`:'OCR عدد قابل استفاده‌ای روی محور پیدا نکرد. کالیبراسیون دستی را استفاده کن.')}catch(e){setStatus('OCR اجرا نشد. کالیبراسیون دستی را استفاده کن.')}};
+  /* -------------------------------------------------------------- report -- */
+  function summaryText(res, ms) {
+    const g = res.geometry, c = res.calibration, q = res.quality;
+    const lines = [];
+    lines.push(`کندل‌ها: ${res.bars.length} (قابل اندازه‌گیری: ${res.bars.filter((b) => b.status === 'ok').length}، نامکمل: ${res.missing})  ·  زمان: ${ms} ms`);
+    lines.push(`شبکهٔ کندل: فاصلهٔ ${g.pitch} پیکسل، مرکز کندل k = ${g.x0} + ${g.pitch}×k  ·  پنل ردیف ${g.paneTop}–${g.paneBot}  ·  داده x=${g.dataX0}–${g.dataX1}  ·  پیکربندی بدنه ${g.bodyWidthPx}px، پنجرهٔ اندازه‌گیری ±${g.bodyHalf}px`);
+    if (c && c.detected) {
+      lines.push(`محور قیمت: ${c.modelChoice} — ${c.equation}`);
+      lines.push('مراجع: ' + c.refs.map((r) => `${r.price}@y${r.row}${r.repaired ? '*' : ''}[${r.source}]`).join('  ·  '));
+      lines.push(`بازماندهٔ رگرسیون: RMS ${c.residualUSD} USD  ·  ۱ پیکسل ≈ ${q.usdPerPx} USD`);
+      if (c.tagCheck) lines.push(`آزمون مستقل (برچسب قیمت): اندازه‌گیری‌شده ${c.tagCheck.measured} در برابر ${c.tagCheck.tagPrice} → خطا ${c.tagCheck.errorUSD} USD`);
+      if (c.repairs && c.repairs.length) lines.push('ارزش‌های تراز شده با فاصلهٔ مرتبهٔ ۱۰: ' + c.repairs.length);
+    } else lines.push('محور قیمت خوانده نشد → مقادیر Open/High/Low/Close خالی است.');
+    lines.push(`کیفیت: میانگین اطمینان ${q.meanConfidence}، کمینه ${q.minConfidence}، نیازمند بازبینی ${q.needReview.length} کندل${q.needReview.length ? ' (#' + q.needReview.slice(0, 14).join(', #') + (q.needReview.length > 14 ? '…' : '') + ')' : ''}`);
+    lines.push(`پیوستگی همسایه‌ها (close→open): میانه ${q.continuityMedianUSD}، ٪۹۰ ${q.continuityP90USD}، بیشینه ${q.continuityMaxUSD} USD — پرش‌های بزرگ معمولاً شکاف نشست معاملاتی یا انبوهی پیکسل‌اند.`);
+    lines.push('محدودیت‌ها: دقت به گام ۱ پیکسل محدود است؛ حجم استخراج نمی‌شود؛ این بازسازی هندسی است، نه تحلیل تکنیکال.');
+    if (res.dateMode) lines.push('تاریخ‌ها: ' + res.dateMode);
+    return lines.join('\n');
+  }
+  function report(res, ms) {
+    status(summaryText(res, ms));
+    window.__ohlcReport = {
+      when: new Date().toISOString(),
+      source: { symbol: $('ohlc-symbol').value, timeframe: $('ohlc-tf').value },
+      result: JSON.parse(JSON.stringify(res, (k, v) => (k === 'bars' ? undefined : v))),
+      bars: JSON.parse(JSON.stringify(res.bars)),
+      pixels: state.img ? { width: state.img.naturalWidth, height: state.img.naturalHeight } : null,
+      durationMs: ms
+    };
+  }
+
+  /* ------------------------------------------------------------ downloads */
+  $('ohlc-csv').addEventListener('click', () => {
+    const csv = window.ChartDNACV.toCSV(state.result);
+    const sym = ($('ohlc-symbol').value || '').trim();
+    dl(sym || 'chart', 'csv', csv);
+  });
+  $('ohlc-png').addEventListener('click', () => {
+    const cv = $('ohlc-ann');
+    if (cv.width) cv.toBlob((b) => dlBlob('annotated', 'png', b), 'image/png');
+  });
+  function dl(name, ext, text) {
+    dlBlob(name, ext, new Blob([text], { type: ext === 'csv' ? 'text/csv' : 'application/octet-stream' }));
+  }
+  function dlBlob(name, ext, blob) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(name || 'ohlc').replace(/[^\w.-]+/g, '_')}_ohlc_from_image.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
+  /* ------------------------------------------------- register in Chart DNA */
+  const DB = 'ChartDNA_Storage', VER = 1, STORE = 'market_datasets', SEL = 'chartdna_selected_dataset_ids';
+  const PAT = 'chartdna_saved_patterns', PAT_PENDING = 'chartdna_ohlc_pending_pattern';
+  const norm = (pts) => { const lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts); return hi === lo ? pts.map(() => 0) : pts.map((v) => 2 * ((v - lo) / (hi - lo)) - 1); };
+  /* The app seeds its pattern library from built-ins on first mount and then
+     persists it in localStorage. Writing before that would clobber the seed,
+     so when the key is not there yet the pattern waits for the next load. */
+  function appendPattern(rec) {
+    let raw = null;
+    try { raw = localStorage.getItem(PAT); } catch (e) { return 'no-storage'; }
+    if (!raw) { try { sessionStorage.setItem(PAT_PENDING, JSON.stringify(rec)); } catch (e) { } return 'queued-for-next-load'; }
+    let list;
+    try { list = JSON.parse(raw); } catch (e) { return 'unreadable'; }
+    if (!Array.isArray(list)) return 'unreadable';
+    if (list.some((p) => p && p.id === rec.id)) return 'already-there';
+    list.push(rec);
+    try { localStorage.setItem(PAT, JSON.stringify(list)); } catch (e) { return 'quota'; }
+    try { sessionStorage.removeItem(PAT_PENDING); } catch (e) { }
+    return 'added';
+  }
+  (function flushPendingPattern() {
+    let pend = null;
+    try { pend = sessionStorage.getItem(PAT_PENDING); if (pend) sessionStorage.removeItem(PAT_PENDING); } catch (e) { }
+    if (!pend) return;
+    try {
+      const rec = JSON.parse(pend);
+      const res = appendPattern(rec);
+      if (res === 'queued-for-next-load') { sessionStorage.setItem(PAT_PENDING, pend); }
+      else if (window.__ohlcLog) window.__ohlcLog('pending pattern: ' + res);
+    } catch (e) { }
+  })();
+  function openDb() {
+    return new Promise((res, rej) => {
+      const o = indexedDB.open(DB, VER);
+      o.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('metadata')) db.createObjectStore('metadata', { keyPath: 'key' });
+      };
+      o.onsuccess = () => res(o.result);
+      o.onerror = () => rej(o.error || new Error('IndexedDB failed'));
+    });
+  }
+  async function saveDataset(andSearch) {
+    const res = state.result;
+    if (!res || !res.calibration || !res.calibration.detected) { status('اول محور قیمت را بخوانید (یا دستی کالیبره کنید)؛ بدون مقادیر عددی دیتاستی ساخته نمی‌شود.', 'warn'); return; }
+    const name = ($('ohlc-symbol').value || 'Image') + ' ' + $('ohlc-tf').value + ' (from image)';
+    const id = 'img-' + Date.now().toString(36);
+    const ds = window.ChartDNACV.toDataset(res, {
+      id, name, symbol: ($('ohlc-symbol').value || 'IMAGE').toUpperCase(), timeframe: $('ohlc-tf').value,
+      note: 'بازسازی از تصویر (' + res.quality.meanConfidence + ' میانگین اطمینان، ' + res.bars.length + ' کندل) — ' + (res.calibration.modelChoice || '')
+    });
+    try {
+      const db = await openDb();
+      await new Promise((r2, j2) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(ds);
+        tx.oncomplete = r2; tx.onerror = () => j2(tx.error);
+      });
+      db.close();
+      let sel = [id];
+      if (!$('ohlc-opt-replace').checked) {
+        try {
+          const cur = JSON.parse(localStorage.getItem(SEL) || '[]');
+          if (Array.isArray(cur) && cur.length) sel = cur.indexOf(id) < 0 ? cur.concat([id]) : cur;
+        } catch (e) { }
+      }
+      try { localStorage.setItem(SEL, JSON.stringify(sel)); } catch (e) { console.warn(e); }
+      let patMsg = '';
+      if ($('ohlc-opt-pattern').checked) {
+        const closes = ds.candles.map((c) => c.close);
+        if (closes.length >= 5) {
+          const pat = {
+            id: 'custom_dna_img_' + id, name: name, category: 'Image extraction',
+            createdAt: new Date().toISOString().slice(0, 10),
+            points: closes, normalizedPoints: norm(closes),
+            notes: 'سری بسته‌شوندهٔ استخراج‌شده از تصویر (' + ds.candles.length + ' کندل، میانگین اطمینان ' + res.quality.meanConfidence + ') — ' + (res.calibration.modelChoice || '')
+          };
+          const r = appendPattern(pat);
+          patMsg = '\nالگو در کتابخانهٔ DNA: ' + ({ 'added': 'اضافه شد ✓', 'already-there': 'از قبل موجود بود', 'queued-for-next-load': 'در صف (بعد از بارگذاری بعدی اضافه می‌شود)', 'quota': 'ذخیره نشد (حافظهٔ مرورگر پر است)', 'unreadable': 'خوانده نشد', 'no-storage': 'غیرقابل دسترس' }[r] || r);
+        }
+      }
+      if (andSearch) { try { sessionStorage.setItem('chartdna_ohlc_autosearch', id); } catch (e) { } }
+      state.datasetId = id;
+      status('دیتاست «' + name + '» ذخیره شد و ' + ($('ohlc-opt-replace').checked ? 'تنها دیتاست انتخاب‌شده است' : 'به دیتاست‌های انتخاب‌شده اضافه شد') + patMsg + (andSearch ? '\nصفحه بارگذاری مجدد می‌شود و جستجو اجرا خواهد شد…' : ''), 'ok');
+      if (andSearch) setTimeout(() => location.reload(), 350);
+    } catch (err) {
+      status('ذخیره در پایگاه محلی برنامه ناموفق بود: ' + (err && err.message ? err.message : err), 'err');
+    }
+  }
+  $('ohlc-save').addEventListener('click', () => saveDataset(false));
+  $('ohlc-save-search').addEventListener('click', () => saveDataset(true));
+
+  /* after a reload requested by "save + search": select the dataset view and
+     click the app's own search button once it exists */
+  (function autoSearch() {
+    let want = null;
+    try { want = sessionStorage.getItem('chartdna_ohlc_autosearch'); if (want) sessionStorage.removeItem('chartdna_ohlc_autosearch'); } catch (e) { }
+    if (!want) return;
+    let tries = 0;
+    const tick = () => {
+      tries++;
+      const btns = Array.prototype.slice.call(document.querySelectorAll('button'));
+      const root = document.getElementById('root') || document.body;
+      const appReady = root && root.children.length > 0;
+      const hit = appReady ? btns.filter((b) => {
+        const t = (b.textContent || '').trim();
+        if (!/جستجو/.test(t) || /جستجو و فیلتر/.test(t) || t.length > 26) return false;
+        if (b.closest && b.closest('#ohlc-modal')) return false;      // never our own button
+        return !b.disabled && b.isConnected !== false;
+      }) : [];
+      if (hit.length) { hit[0].click(); status2('جستجوی الگو روی دیتاست استخراج‌شده اجرا شد (' + want + ').'); return; }
+      if (tries < 120) setTimeout(tick, 500);
+    };
+    const wait = () => (document.body ? tick() : setTimeout(wait, 300));
+    setTimeout(wait, 1800);
+    function status2(msg) {
+      const b = document.getElementById('ohlc-status');
+      if (b) { show(true); b.textContent = msg + '\n(دیتاست ' + want + ' به‌عنوان تنها دیتاست انتخاب‌شده بارگذاری شد.)'; }
+    }
+  })();
+
+  /* small nicety: keep the tool out of the way of the app's own controls */
+  new MutationObserver(() => {
+    if (document.body && !document.getElementById('ohlc-tool')) document.body.appendChild(rootEl);
+  }).observe(document.documentElement, { childList: true });
 })();

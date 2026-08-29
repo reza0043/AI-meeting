@@ -1,0 +1,14 @@
+{
+  "note": "Facts read off the bottom axis of the validation screenshot (2712x1220 px, XAUUSD 1h). A TradingView session label is printed at the first bar of that day, which is how assignDates() interprets an anchor. The 1h timeframe and 23 hourly bars per trading day come from the chart header, not from the pixel content.",
+  "timeframe_minutes": 60,
+  "hourly_bars_per_trading_day": 23,
+  "vertical_gridlines": [
+    { "x_px": 398, "iso_date": "2026-08-14" },
+    { "x_px": 695, "iso_date": "2026-08-18" },
+    { "x_px": 993, "iso_date": "2026-08-20" },
+    { "x_px": 1290, "iso_date": "2026-08-24" },
+    { "x_px": 1587, "iso_date": "2026-08-26" },
+    { "x_px": 1884, "iso_date": "2026-08-28" },
+    { "x_px": 2182, "iso_date": "2026-09-01" }
+  ]
+}
