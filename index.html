@@ -14,13 +14,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Chart DNA" />
 
-    <!-- iOS PWA icons (apple-touch-icon) -->
     <link rel="apple-touch-icon" href="icons/icon-180x180.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192x192.png" />
     <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512x512.png" />
-
-    <!-- iOS splash screens -->
     <link rel="apple-touch-startup-image" href="icons/icon-512x512.png" />
 
     <title>Chart DNA — Algorithmic Market Pattern Matching & Technical Intelligence</title>
@@ -30,12 +27,12 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script type="module" crossorigin src="/AI-meeting/assets/index-DOCOgEgh.js"></script>
     <link rel="stylesheet" crossorigin href="/AI-meeting/assets/index-DlM2CZDB.css">
+    <!-- Browser-side chart screenshot OHLC extraction tool -->
+    <script src="chart-ohlc-extractor.js" defer></script>
   </head>
   <body class="bg-[#0b0f17] text-[#e2e8f0] font-sans antialiased overflow-x-hidden selection:bg-emerald-500/30 selection:text-emerald-200">
     <div id="root"></div>
     <script>
-      // Register the service worker for PWA install & offline support.
-      // Relative path so the SW scope matches the site sub-path (/AI-meeting/).
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
           navigator.serviceWorker
@@ -48,8 +45,6 @@
             });
         });
       }
-
-      // Capture the manual "Add to Home Screen" install prompt.
       window.addEventListener("beforeinstallprompt", function (e) {
         e.preventDefault();
         window.__chartdnaInstallPrompt = e;
