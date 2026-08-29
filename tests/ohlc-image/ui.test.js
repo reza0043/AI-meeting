@@ -23,7 +23,7 @@ const SIZE = process.env.OHLC_IMG_SIZE ? JSON.parse(process.env.OHLC_IMG_SIZE) :
 const PAGE = '<!doctype html><html lang="fa"><head><meta charset="utf-8">' +
   '<script src="chart-ohlc-engine.js"></script><script src="chart-ohlc-extractor.js"></script>' +
   '</head><body><div id="root"><button id="app-search">جستجو در تاریخچه</button>' +
-  '<div id="image-cropper-card"><canvas id="app-canvas"></canvas></div>' +
+  '<div id="image-cropper-card"><canvas id="app-canvas"></canvas><img id="app-preview" src="blob:preview"></div>' +
   '<img id="app-img" src="blob:something"></div></body></html>';
 
 const server = http.createServer((req, res) => {
@@ -76,7 +76,7 @@ function patchWindow(window, blobs) {
   /* jsdom knows no layout: give the app image card and its canvas a geometry and
      a scroll offset, so pinning the opener onto the picture can be measured. */
   win.__layout = { scrollY: 0 };
-  const RECT = { 'image-cropper-card': [20, 120, 520, 480], 'app-canvas': [28, 170, 512, 470] };
+  const RECT = { 'image-cropper-card': [20, 120, 520, 480], 'app-canvas': [28, 170, 512, 470], 'app-preview': [28, 160, 512, 470] };
   win.Element.prototype.getBoundingClientRect = function () {
     const r = RECT[this.id];
     if (!r) return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON() { return this; } };
@@ -151,8 +151,10 @@ const ok = (name, cond, info) => {
 
   console.log('1b) the opener is pinned on top of the app picture');
   const tool = $('ohlc-tool');
-  ok('the opener sits on the image, at its top-right corner',
-    /ohlc-pinned/.test(tool.className) && tool.style.top === '180px' && tool.style.left === '302px',
+  ok('it anchors on the biggest picture in the card, not a small overlay canvas',
+    /ohlc-pinned/.test(tool.className) && tool.style.top === '170px', 'top=' + tool.style.top);
+  ok('the opener sits on the image, at its top-right',
+    /ohlc-pinned/.test(tool.className) && tool.style.top === '170px' && tool.style.left === '302px',
     tool.className + ' top=' + tool.style.top + ' left=' + tool.style.left);
   win.__layout.scrollY = 400;                       /* the user scrolls the picture away */
   win.dispatchEvent(new win.Event('scroll'));
@@ -160,8 +162,8 @@ const ok = (name, cond, info) => {
   ok('it stays reachable instead of scrolling out of sight', tool.style.top === '8px', 'top=' + tool.style.top);
   win.__layout.scrollY = 0;
   win.dispatchEvent(new win.Event('scroll'));
-  for (let i = 0; i < 40 && tool.style.top !== '180px'; i++) await sleep(20);
-  ok('and returns to the picture when it is back in view', tool.style.top === '180px', 'top=' + tool.style.top);
+  for (let i = 0; i < 40 && tool.style.top !== '170px'; i++) await sleep(20);
+  ok('and returns to the picture when it is back in view', tool.style.top === '170px', 'top=' + tool.style.top);
   win.ChartDnaOhlc.note('296 کندل');
   ok('the pinned button carries the result count', /296 کندل/.test(txt('ohlc-open')), txt('ohlc-open'));
   win.ChartDnaOhlc.pin(false);
@@ -170,7 +172,7 @@ const ok = (name, cond, info) => {
     JSON.stringify({ cls: tool.className, top: tool.style.top, key: win.localStorage.getItem('chartdna_ohlc_pin') }));
   win.ChartDnaOhlc.pin(true);
   await sleep(60);
-  ok('switching it back on re-parks it on the picture', /ohlc-pinned/.test(tool.className) && tool.style.top === '180px',
+  ok('switching it back on re-parks it on the picture', /ohlc-pinned/.test(tool.className) && tool.style.top === '170px',
     tool.className + ' top=' + tool.style.top);
   win.ChartDnaOhlc.pin(false);                      /* the rest of this suite is layout-free */
 

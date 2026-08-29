@@ -552,12 +552,16 @@
     const cr = card.getBoundingClientRect();
     if (!(cr.width > 0) || !(cr.height > 0)) return null;
     let box = null, area = 0;
-    const list = card.querySelectorAll('canvas');
+    /* the picture itself, whether the app paints it on a canvas or in an <img> */
+    const list = card.querySelectorAll('canvas,img');
     for (let i = 0; i < list.length; i++) {
-      const r = list[i].getBoundingClientRect();
+      const el = list[i];
+      if (el.closest && el.closest('#ohlc-modal,#ohlc-auto-card')) continue;   // never our own preview
+      const r = el.getBoundingClientRect();
+      if (!(r.height > 90)) continue;
       if (r.width * r.height > area) { area = r.width * r.height; box = r; }
     }
-    if (box && box.height > 90 && box.top >= cr.top - 1) {
+    if (box && box.top >= cr.top - 1) {
       return { top: Math.max(box.top, cr.top), left: box.left, right: box.right, height: box.height };
     }
     return { top: cr.top + 38, left: cr.left, right: cr.right, height: Math.max(60, cr.height - 46) };
