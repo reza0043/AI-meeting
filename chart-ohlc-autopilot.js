@@ -130,8 +130,10 @@
     if (!A) return;
     const url = findAppImage();
     if (!url) { statusLine('تصویری در پنل برنامه پیدا نشد — اول در «محیط الگو» تصویر را انتخاب کنید.'); return; }
-    try { if (!A.image() || A.image().src !== url) { /* fall through: handle() loads it anyway */ } } catch (e) { }
+    /* a tap is an order: run it even if the picture was already seen or retried */
     set(SEEN, '');
+    current = null;
+    tried[signature(url)] = 0;
     await handle(url, true);
   }
   function statusLine(msg, kind) {
@@ -163,7 +165,7 @@
       }
       drawCard(res);
       const saved = await A.saveDataset(false, { silent: true, pattern: true, id: datasetId(sig) });
-      if (saved && saved.error) { ensureCard('ثبت دیتاست ناموفق: ' + saved.error, res); return; }
+      if (saved && saved.error) { current = null; ensureCard('ثبت دیتاست ناموفق: ' + saved.error, res); return; }
       cardStatus(res, saved);
       syncReferencePrice(res);
       current = null;

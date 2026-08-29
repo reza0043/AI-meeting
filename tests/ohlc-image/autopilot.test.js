@@ -356,6 +356,16 @@ const ok = (name, cond, info) => {
   for (let i = 0; i < 200 && !/کندل$/.test(doc4.getElementById('ohlc-auto-badge').textContent.trim()); i++) await sleep(200);
   for (let i = 0; i < 60 && !rec4.rec; i++) await sleep(200);   /* the save finishes a moment after the drawing */
   ok('one tap extracts the app picture anyway', doc4.getElementById('ohlc-auto-badge').textContent.trim() === EXPECT_BARS + ' کندل', doc4.getElementById('ohlc-auto-badge').textContent);
+  /* a second tap is a fresh order: it must not be swallowed by the "already seen" guard */
+  const id4a = rec4.rec && rec4.rec.id;
+  const candles4a = rec4.rec && rec4.rec.candles.length;
+  rec4.rec = null;
+  doc4.querySelector('#ohlc-auto-card [data-act="now"]').click();
+  for (let i = 0; i < 200 && !rec4.rec; i++) await sleep(200);
+  ok('a second tap re-measures the same picture into the same dataset',
+    !!rec4.rec && rec4.rec.id === id4a && rec4.rec.candles.length === candles4a,
+    rec4.rec ? rec4.rec.id + ' / ' + rec4.rec.candles.length + ' candles' : 'nothing re-saved');
+  ok('manual re-runs left the page error-free', errors.length === 0, errors.join(' | ') || 'none');
   ok('and registers the dataset from that tap', !!rec4.rec && rec4.rec.candles.length === EXPECT_BARS, rec4.rec ? rec4.rec.candles.length + ' candles' : 'nothing stored');
   ok('no page errors on the manual path', errors.length === 0, errors.join(' | ') || 'none');
 
