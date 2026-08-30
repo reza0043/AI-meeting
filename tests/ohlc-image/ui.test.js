@@ -194,6 +194,15 @@ const ok = (name, cond, info) => {
   ok('and closes again', $('ohlc-modal').style.display === 'none');
   ok('drag & drop and paste are wired', /dragover/.test($('ohlc-drop').getAttribute('class') || '') || !!$('ohlc-drop'), 'drop zone present');
 
+  /* what the window is called, and what is not called any more */
+  const h2 = $('ohlc-card').querySelector('h2');
+  ok('the window is named «ورود تصویر»', h2.textContent === 'ورود تصویر', JSON.stringify(h2.textContent));
+  ok('no explanation sits under the name', !$('ohlc-card').querySelector('h2 + .ohlc-muted') &&
+    h2.nextElementSibling.className.indexOf('ohlc-muted') < 0,
+    'next sibling is <' + h2.nextElementSibling.tagName + ' class="' + h2.nextElementSibling.className + '">');
+  ok('and the old wording is nowhere in the panel',
+    !$('ohlc-card').textContent.match(/بازسازی OHLC از اسکرین|computer vision|حافظهٔ مدل/), 'clean');
+
   console.log('1b) the deck key «ورود تصویر چارت» opens the OHLC environment, not the device storage');
   const deck = $('btn-import-image');
   const look = deck.className + '|' + deck.textContent + '|' + deck.getAttribute('title');

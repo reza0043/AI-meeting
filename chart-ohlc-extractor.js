@@ -1,7 +1,9 @@
-/* Chart DNA — image → OHLC tool (UI layer)
+/* Chart DNA — «ورود تصویر» (UI layer)
  * Runs the pixel-measurement engine (chart-ohlc-engine.js) on a chart
  * screenshot, shows the reconstructed candlestick chart, and can register the
  * result as a Chart DNA dataset so the pattern / history search runs on it.
+ * The window is named after what it is for: an image goes in, candles come out.
+ * No explanation is printed under its name.
  * It has no button of its own: the app's picture-icon key in the recorder-like play
  * strip (#btn-import-image, «ورود تصویر چارت») opens this environment instead of the
  * device storage, and the screenshot is chosen here. The key keeps its icon, name and
@@ -12,7 +14,7 @@
   const STYLE = `
   #ohlc-modal{display:none;position:fixed;inset:0;background:#020617e6;backdrop-filter:blur(8px);z-index:2147483647;align-items:flex-start;justify-content:center;padding:14px;overflow:auto}
   #ohlc-card{width:min(1080px,97vw);background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-shadow:0 25px 80px #000a;font-family:inherit}
-  #ohlc-card h2{margin:0 0 6px;font-size:19px}
+  #ohlc-card h2{margin:0;font-size:19px}
   .ohlc-muted{color:#94a3b8;font-size:12.5px;line-height:1.7}
   .ohlc-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:12px}
   .ohlc-box{border:1px solid #243244;border-radius:12px;padding:11px;background:#0f172a}
@@ -46,9 +48,7 @@
   @media(max-width:820px){.ohlc-grid{grid-template-columns:1fr}}
   `;
   const T = {
-    open: '📈 استخراج OHLC از تصویر',
-    title: 'بازسازی OHLC از اسکرین‌shot نمودار',
-    sub: 'اندازه‌گیری روی پیکسل‌ها (computer vision). هیچ قیمتی از اینترنت یا حافظهٔ مدل نمی‌آید؛ هر چیزی که در تصویر نباشد خالی می‌ماند.',
+    title: 'ورود تصویر',
     run: 'استخراج کندل‌ها', csv: 'دانلود CSV', png: 'دانلود تصویر حاشیه‌نویسی‌شده',
     save: 'ثبت به‌عنوان دیتاست Chart DNA', saveSearch: 'ثبت و اجرای جستجو', close: 'بستن',
     busy: 'در حال پردازش…', grab: 'استفاده از تصویری که در برنامه آپلود کرده‌اید',
@@ -66,7 +66,6 @@
   modal.innerHTML = `
   <div id="ohlc-card" dir="rtl">
     <h2>${T.title}</h2>
-    <div class="ohlc-muted">${T.sub}</div>
     <div class="ohlc-grid" style="margin-top:12px">
       <div>
         <div class="ohlc-drop" id="ohlc-drop">تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)
@@ -586,7 +585,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 7,
+    version: 8,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
