@@ -134,7 +134,7 @@
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
   const state = { img: null, result: null, templates: null, points: [], datasetId: null, running: false, imgKey: null };
 
-  /* remember the label fields: the autopilot reloads the page once per image */
+  /* remember the label fields, the panel is closed between uploads */
   const FORM = 'chartdna_ohlc_form';
   (function restoreForm() {
     try {

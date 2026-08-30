@@ -9,7 +9,7 @@ export OHLC_IMG=/path/to/chart-screenshot.jpg
 node tests/ohlc-image/fixtures.mjs   # .fixtures/img.rgba + templates.json
 node tests/ohlc-image/parity.test.js
 node tests/ohlc-image/ui.test.js
-node tests/ohlc-image/autopilot.test.js
+node tests/ohlc-image/ui-trim.test.js
 ```
 
 | فایل | چه چیزی را می‌سنجد |
@@ -17,7 +17,7 @@ node tests/ohlc-image/autopilot.test.js
 | `fixtures.mjs` | تصویر را با بوم واقعی (Skia) به خام RGBA و قالب‌های رقمی تبدیل می‌کند |
 | `parity.test.js` | خط لولهٔ مرورگر (`canvasTemplates` + `extract`) روی همان تصویری که با NumPy بازبینی شده: اختلاف سطوح OHLC، جهت‌ها، تاریخ‌ها، معادلهٔ کالیبراسیون، آزمون مستقل برچسب قیمت و دودِ رندر |
 | `ui.test.js` | دکمه/مودال/دکمه‌های عملیات در jsdom: استخراج، جدول، CSV، نوشتن در `market_datasets`، افزودن به دیتاست‌های انتخاب‌شده، صف‌شدن الگو در `chartdna_saved_patterns`، و کلیک خودکار «جستجو» بعد از ریلود |
-| `autopilot.test.js` | یک ماکت از «محیط الگو»ی برنامه: آپلود تصویر → کارت تزریقی با کندل‌ها → ثبت/انتخاب دیتاست → کادر زرد → بازخوانی → کلیک‌های «تنظیمات / تشخیص و ثبت الگو / جستجوی فوری» و اینکه جستجو با همان ۲۹۶ کندل اجرا می‌شود |
+| `ui-trim.test.js` | ماکتِ صفحهٔ برنامه برای `chart-dna-ui-trim.js`: کارت قدیمی حذف شود، پنل «رسم چارت و سطوح تحلیل الگو» مخفی شود و همسایه‌ها نه، جاروی داده فقط مالِ ما را پاک کند (دیتاست/الگو/قیمت مرجع/کلیدها)، یک‌بار اجرا شود و با `chartdna_ui_trim='0'` خاموش شود؛ در پایان هم بررسی می‌کند که `chart-ohlc-autopilot.js` دیگر در `index.html`/`sw.js` نیست |
 
 آستانه‌های `parity.test.js` عامدانه باز هستند: هر سطح باید تا ۱ پیکسل (روی نمونهٔ
 آزمون ≈۰٫۶۱ دلار) با `reference/xauusd_1h_expected.csv` هم‌خوان باشد و ۹۹٪ سطوح داخل
