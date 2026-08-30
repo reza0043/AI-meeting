@@ -2,8 +2,8 @@
  *
  * Loads chart-ohlc-engine.js and chart-ohlc-extractor.js exactly the way
  * index.html does, feeds the real screenshot through the file input, clicks every
- * action button and checks what the tool writes: the CSV download, the IndexedDB
- * dataset, the app's selection, the pattern queue and the auto-search hand-off.
+ * action button and checks what the tool writes — which is nothing: no download key,
+ * no file, no IndexedDB dataset, no app selection, no pattern queue, no auto-search.
  *
  *   OHLC_IMG=/path/to/chart-screenshot.jpg node tests/ohlc-image/ui.test.js
  */
@@ -226,15 +226,16 @@ const ok = (name, cond, info) => {
     /\.ohlc-table thead th\{position:sticky;top:0/.test(cardCss), 'scroll box + sticky head');
   ok('and the old wording is nowhere in the panel',
     !$('ohlc-card').textContent.match(/بازسازی OHLC از اسکرین|computer vision|حافظهٔ مدل/), 'clean');
-  const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace', 'ohlc-close'];
+  const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace',
+    'ohlc-close', 'ohlc-csv', 'ohlc-png'];
   const PANEL = ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0', 'ohlc-ref-row', 'ohlc-ref-price',
     'ohlc-ref-add', 'ohlc-ref-clear', 'ohlc-points'];
   ok('the pick / grab / save keys are gone, and with them the label, calibration and output panels',
     GONE.concat(PANEL).every((id) => !$(id)), GONE.concat(PANEL).filter((id) => $(id)).join(',') || 'none of them in the DOM');
-  ok('the bottom row keeps only the two downloads; «بستن» moved up as the sixth key',
-    !!$('ohlc-run') && !!$('ohlc-csv') && !!$('ohlc-png') && !$('ohlc-close') &&
-    Array.prototype.slice.call($('ohlc-card').querySelector('.ohlc-actions').children).map((b) => b.id).join(',') === 'ohlc-csv,ohlc-png',
-    'csv · png only · ' + ($('ohlc-confirm') ? 'confirm is in the top row' : 'no confirm key'));
+  ok('the two download keys are gone, their row with them; «بستن» stayed up as the sixth key',
+    !!$('ohlc-run') && !$('ohlc-csv') && !$('ohlc-png') && !$('ohlc-actions') && !$('ohlc-close') &&
+    !!$('ohlc-confirm'),
+    'children of the card: ' + Array.prototype.slice.call($('ohlc-card').children).map((e) => e.id || e.className).join(' · '));
   ok('the image still enters through the upload key (or a paste)', !!$('ohlc-drop') && !!$('ohlc-file'),
     'icon key + its file input');
   ok('«تأیید» starts out disabled: there is nothing to confirm yet', $('ohlc-confirm').disabled === true,
@@ -287,9 +288,11 @@ const ok = (name, cond, info) => {
     'no square-key CSS left in the page');
   ok('the row sits above the image of the chart',
     (bar.compareDocumentPosition($('ohlc-chart')) & win.Node.DOCUMENT_POSITION_FOLLOWING) !== 0, 'bar → canvas');
-  ok('the old wide drop panel and the old tab strip are gone',
-    !$('ohlc-card').querySelector('.ohlc-tabs') && !$('ohlc-card').querySelector('.ohlc-actions [data-view]') &&
-    !$('ohlc-card').querySelector('.ohlc-actions #ohlc-run'), 'no strip, no duplicate run key');
+  ok('the old drop panel, the old tab strip and the row of downloads are gone',
+    !$('ohlc-card').querySelector('.ohlc-tabs') && !$('ohlc-card').querySelector('.ohlc-actions') &&
+    !$('ohlc-actions') && !/\.ohlc-actions|\.ohlc-secondary/.test(
+      Array.prototype.slice.call(win.document.querySelectorAll('style')).map((e) => e.textContent).join('\n')),
+    'no strip, no download row, no button skin left in the styles');
   const origKey = $('ohlc-card').querySelector('[data-view="orig"]');
   origKey.dispatchEvent(new win.Event('click', { bubbles: true }));
   await sleep(60);
@@ -318,8 +321,12 @@ const ok = (name, cond, info) => {
   ok('the app’s own handler never ran, so the storage dialog stays closed',
     win.__deckTaps === 0 && win.__deckInput === null,
     'taps=' + win.__deckTaps + ', input=' + (win.__deckInput ? 'created' : 'never built'));
-  ok('the panel tells the user to pick the screenshot here', /حافظه/.test(txt('ohlc-status')),
-    txt('ohlc-status').split('\n')[0]);
+  ok('and the window opens without that sentence about picking from memory',
+    !/از حافظه انتخاب کنید|اینجا همان کاری است که کلید/.test($('ohlc-card').textContent + txt('ohlc-status')) &&
+    !/pickHint|deckLabel/.test(fs.readFileSync('/home/user/repo/chart-ohlc-extractor.js', 'utf8')) &&
+    /هنوز تصویری انتخاب نشده/.test(txt('ohlc-status')), txt('ohlc-status').split('\n')[0].slice(0, 60));
+  ok('what the upload key says is its own tooltip, untouched',
+    /رها کنید/.test($('ohlc-drop').getAttribute('title') || ''), ($('ohlc-drop').getAttribute('title') || '').slice(0, 46) + '…');
   ok('the key is untouched: same icon, same name, same classes',
     look === deck.className + '|' + deck.textContent + '|' + deck.getAttribute('title'), JSON.stringify(deck.className));
   ok('no element of ours was added inside the deck or the app card',
@@ -392,8 +399,8 @@ const ok = (name, cond, info) => {
   ok('nothing invented: with no date source at all, no bar gets a date',
     nBars > 0 && (rep.bars || []).every((b) => !b.date) && R.dateMode === undefined,
     'dated bars: ' + (rep.bars || []).filter((b) => b.date).length + ' · dateMode=' + R.dateMode);
-  ok('both downloads are enabled, and there is no third one', ['ohlc-csv', 'ohlc-png'].every((id) => !$(id).disabled) && !$('ohlc-save'),
-    'csv+png live · save gone');
+  ok('and after a run there is still no download key to enable', !$('ohlc-csv') && !$('ohlc-png') && !$('ohlc-save'),
+    'csv/png were deleted with their function · save was deleted before them');
   ok('preview table rendered', ($('ohlc-table').querySelectorAll('tbody tr') || []).length > 0, $('ohlc-table').querySelectorAll('tbody tr').length + ' rows');
   const th = Array.prototype.slice.call($('ohlc-table').querySelectorAll('thead th')).map((x) => x.textContent.trim());
   ok('the table has eight columns and no note column', th.length === 8 && th.indexOf('note') < 0, th.join(' · '));
@@ -528,7 +535,7 @@ const ok = (name, cond, info) => {
   ok('one short line of feedback is all the card shows',
     txt('ohlc-status').split('\n').length <= 4, txt('ohlc-status').split('\n').length + ' lines');
 
-  console.log('3) CSV download');
+  console.log('3) nothing is written to disk: the exports are gone, the numbers stay in memory');
   const captured = [];
   const OrigBlob = win.Blob;
   win.Blob = function (parts, o) { const b = new OrigBlob(parts, o); b.__txt = typeof parts[0] === 'string' ? parts[0] : ''; captured.push(b); return b; };
@@ -536,14 +543,22 @@ const ok = (name, cond, info) => {
   let download = null;
   const origCreate = doc.createElement.bind(doc);
   doc.createElement = (t) => { const el = origCreate(t); if (t === 'a') el.click = () => { download = el.download; }; return el; };
-  $('ohlc-csv').click();
-  await sleep(120);
-  const csv = captured.length ? captured[captured.length - 1].__txt : '';
-  const lines = csv.split('\r\n');
-  ok('file name carries the CSV suffix', /_ohlc_from_image\.csv$/.test(download || ''), download);
-  ok('header is the required schema', lines[0] === 'Candle,Date,Time,Open,High,Low,Close,Direction,Confidence', lines[0]);
+  ok('no export key is on either card', !$('ohlc-csv') && !$('ohlc-png') &&
+    !$('ohlc-card').querySelector('.ohlc-actions') && !$('ohlc-table-card').querySelector('.ohlc-actions'),
+    'card: ' + Array.prototype.slice.call($('ohlc-card').children).map((e) => e.id || e.className).join(' · ') +
+    ' · table card: ' + Array.prototype.slice.call($('ohlc-table-card').children).map((e) => e.id).join(' · '));
+  ok('and the whole path is deleted from the file, not left idle',
+    !/dlBlob|function dl\(|a\.download|ohlc-csv|ohlc-png|T\.csv|T\.png|ohlc-secondary/.test(
+      fs.readFileSync('/home/user/repo/chart-ohlc-extractor.js', 'utf8')),
+    'no blob, no anchor, no listener, no skin for them');
+  ok('the page wrote no file at all', captured.length === 0 && download === null,
+    'blobs=' + captured.length + ' · download=' + download);
+  const csv = win.ChartDnaOhlc.toCSV();
+  const lines = String(csv || '').split('\r\n');
+  ok('the numbers are still there, in the very same schema',
+    lines[0] === 'Candle,Date,Time,Open,High,Low,Close,Direction,Confidence', lines[0]);
   const data = lines.slice(1).filter((l) => l.length);
-  ok('one row per candle', data.length === nBars, data.length + ' data rows for ' + nBars + ' candles');
+  ok('one row per candle', data.length === nBars, data.length + ' rows for ' + nBars + ' candles');
   ok('row count equals the candle numbers', data.every((l, i) => +l.split(',')[0] === i + 1), 'numbered 1..' + data.length);
   const nums = (lines[1] || '').split(',');
   ok('row values are numeric and H>=body>=L', ['', 'Bullish', 'Bearish'].indexOf(nums[7]) >= 0 && parseFloat(nums[3]) <= parseFloat(nums[4]) && parseFloat(nums[5]) <= Math.min(parseFloat(nums[3]), parseFloat(nums[6])), 'row 1: ' + lines[1]);

@@ -219,9 +219,10 @@ const ok = (name, cond, info) => {
   });
   /* and the controls of the panels that were just deleted (label / calibration / output) */
   const PANEL_IDS = ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0',
-    'ohlc-ref-row', 'ohlc-ref-price', 'ohlc-ref-add', 'ohlc-ref-clear', 'ohlc-points'];
+    'ohlc-ref-row', 'ohlc-ref-price', 'ohlc-ref-add', 'ohlc-ref-clear', 'ohlc-points', 'ohlc-csv', 'ohlc-png'];
   PANEL_IDS.forEach((id) => {
-    const el = doc.createElement(id.indexOf('ref-add') >= 0 || id === 'ohlc-ref-clear' ? 'button' : 'input');
+    const btn = id === 'ohlc-ref-add' || id === 'ohlc-ref-clear' || id === 'ohlc-csv' || id === 'ohlc-png';
+    const el = doc.createElement(btn ? 'button' : 'input');
     el.id = id; el.value = 'قدیمی';
     doc.getElementById('chart-dna-app').appendChild(el);
   });
@@ -233,7 +234,7 @@ const ok = (name, cond, info) => {
     ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern'].every((id) => !doc.getElementById(id)) &&
     ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search'].every((id) => (win.ChartDnaUiTrim.drops()[id] || 0) >= 1),
     'drops=' + JSON.stringify(win.ChartDnaUiTrim.drops()));
-  ok('the label / calibration / output controls of a stale build are swept the same way',
+  ok('the stale panel controls and the two download keys are swept the same way',
     PANEL_IDS.every((id) => !doc.getElementById(id)) &&
     PANEL_IDS.every((id) => (win.ChartDnaUiTrim.drops()[id] || 0) >= 1),
     'drops=' + PANEL_IDS.map((id) => win.ChartDnaUiTrim.drops()[id] || 0).join(','));

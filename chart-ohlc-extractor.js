@@ -1,11 +1,12 @@
 /* Chart DNA — «ورود تصویر» (UI layer)
  * Runs the pixel-measurement engine (chart-ohlc-engine.js) on a chart
- * screenshot and shows what was measured: the reconstructed candles, the table,
- * and the two downloads. It is a window into the picture, nothing more.
+ * screenshot and shows what was measured: the reconstructed candles and the table
+ * of the numbers. It is a window into the picture, nothing more, and it exports
+ * nothing either: no file is written, no picture leaves the page.
  * The window is named after what it is for: an image goes in, candles come out.
- * It is read-only by design: the extracted candles, the CSV and the annotated
- * picture stay on this page — nothing here writes into the app's dataset store,
- * its pattern library or its search.
+ * Everything stays in memory: the app's dataset store, its pattern library and
+ * its search are never written into, and the numbers are offered only as the
+ * table, window.__ohlcReport and ChartDnaOhlc.toCSV().
  * It has no button of its own: the app's picture-icon key in the recorder-like play
  * strip (#btn-import-image, «ورود تصویر چارت») opens this environment instead of the
  * device storage, and the screenshot is chosen here. The key keeps its icon, name and
@@ -38,10 +39,6 @@
   #ohlc-confirm{color:#10b981}
   #ohlc-confirm:not(:disabled){background:#062b1e;border-color:#10b981}
   @media(max-width:430px){#ohlc-bar{gap:2px;padding:4px}.ohlc-dk{min-height:34px;border-radius:7px}}
-  .ohlc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-  .ohlc-actions button{border:0;border-radius:10px;padding:10px 13px;cursor:pointer;font-weight:700;font-family:inherit;font-size:12.5px}
-  .ohlc-actions button:disabled{opacity:.45;cursor:not-allowed}
-  .ohlc-secondary{background:#1e293b;color:#e2e8f0}
   /* the three views share one frame: same box, same ratio, same length of the series.
      the card rhythm (340px, 390px when there is room) is the one the app's own chart cards
      use, and object-fit keeps the picture whole — so the page reads as one grid, not two */
@@ -59,9 +56,9 @@
   `;
   const T = {
     title: 'ورود تصویر',
-    run: 'استخراج کندل‌ها', csv: 'دانلود CSV', png: 'دانلود تصویر حاشیه‌نویسی‌شده',
+    run: 'استخراج کندل‌ها',
     confirm: 'تأیید و بازگشت به صفحهٔ برنامه',
-    busy: 'در حال پردازش…', pickHint: 'تصویر اسکرین‌شات چارت را از حافظه انتخاب کنید'
+    busy: 'در حال پردازش…'
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
 
@@ -109,10 +106,6 @@
       <canvas id="ohlc-ann" class="ohlc-hidden"></canvas>
     </div>
     <div id="ohlc-status">هنوز تصویری انتخاب نشده.</div>
-    <div class="ohlc-actions">
-      <button class="ohlc-secondary" id="ohlc-csv" disabled>${T.csv}</button>
-      <button class="ohlc-secondary" id="ohlc-png" disabled>${T.png}</button>
-    </div>
   </div>
   <div id="ohlc-table-card" class="ohlc-hidden"><div id="ohlc-table"></div></div>`;
   document.body.appendChild(modal);
@@ -242,7 +235,6 @@
     if (state.running) return null;
     state.running = true;
     status(T.busy);
-    ['ohlc-csv', 'ohlc-png'].forEach((id) => { $(id).disabled = true; });
     await new Promise((r) => setTimeout(r, 30));
     try {
       if (!state.templates) state.templates = window.ChartDNACVTemplateCache || (window.ChartDNACVTemplateCache = window.ChartDNACV.canvasTemplates(makeCtx));
@@ -260,7 +252,6 @@
       const ms = Math.round(performance.now() - t0);
       report(res, ms);
       try { drawResults(res); } catch (e) { console.warn('preview rendering failed:', e); }
-      ['ohlc-csv', 'ohlc-png'].forEach((id) => { $(id).disabled = !(res.calibration && res.calibration.detected); });
       if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms), 'warn');
       state.lastImage = forced || state.imgKey || null;
       return res;
@@ -323,33 +314,6 @@
     };
   }
 
-  /* ------------------------------------------------------------ downloads */
-  $('ohlc-csv').addEventListener('click', () => {
-    dl('chart', 'csv', window.ChartDNACV.toCSV(state.result));
-  });
-  $('ohlc-png').addEventListener('click', () => {
-    if (state.img && state.result) {                 /* the view is capped, the file is not */
-      try {
-        const full = document.createElement('canvas');
-        window.ChartDNACV.renderAnnotated(full, state.img, state.result);
-        full.toBlob((b) => dlBlob('annotated', 'png', b), 'image/png');
-        return;
-      } catch (e) { console.warn(e); }
-    }
-    const cv = $('ohlc-ann');
-    if (cv.width) cv.toBlob((b) => dlBlob('annotated', 'png', b), 'image/png');
-  });
-  function dl(name, ext, text) {
-    dlBlob(name, ext, new Blob([text], { type: ext === 'csv' ? 'text/csv' : 'application/octet-stream' }));
-  }
-  function dlBlob(name, ext, blob) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${(name || 'ohlc').replace(/[^\w.-]+/g, '_')}_ohlc_from_image.${ext}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  }
-
   /* ------------------------------------------------- the deck's import key leads here
    * The recorder-like strip in the app's sidebar (#remote-control-deck inside
    * #sidebar-controls) carries «ورود تصویر چارت» — #btn-import-image, a picture icon and
@@ -375,7 +339,6 @@
     }
     return null;
   }
-  function deckLabel() { const k = deckKey(); return k ? ((k.getAttribute('title') || k.textContent || '').trim() || DECK_ID) : ''; }
   function takeoverOn() {
     try { return localStorage.getItem('chartdna_deck_takeover') !== '0'; } catch (e) { return true; }
   }
@@ -390,7 +353,6 @@
     if (!takeoverOn() || !isDeckKey(e.target)) return;
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();   /* the storage dialog stays closed */
     show(true);
-    status(T.pickHint + (deckLabel() ? ' — اینجا همان کاری است که کلید «' + deckLabel() + '» به آن می‌آید' : ''));
   }, true);
   /* a picture handed to us from anywhere else (a paste, a seam call) is still measured */
   async function onPickedImage(url) {
@@ -401,7 +363,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 15,
+    version: 16,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
