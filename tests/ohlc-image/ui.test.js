@@ -50,9 +50,9 @@ function page(withDeck) {
     '<img id="app-img" src="blob:something">' +
     '</div></div>' +
     '<script>' +
-    'window.__appImage=null;window.__deckImage=null;window.__deckInput=null;' +
+    'window.__appImage=null;window.__deckImage=null;window.__deckInput=null;window.__deckTaps=0;' +
     'var deck=document.getElementById("btn-import-image");' +
-    'if(deck)deck.addEventListener("click",function(){' +
+    'if(deck)deck.addEventListener("click",function(){window.__deckTaps++;' +
     '  var inp=document.createElement("input");inp.type="file";inp.accept="image/*";' +
     '  inp.onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;' +
     '    var r=new FileReader();r.onload=function(){window.__deckImage=r.result;};r.readAsDataURL(f);};' +
@@ -194,43 +194,58 @@ const ok = (name, cond, info) => {
   ok('and closes again', $('ohlc-modal').style.display === 'none');
   ok('drag & drop and paste are wired', /dragover/.test($('ohlc-drop').getAttribute('class') || '') || !!$('ohlc-drop'), 'drop zone present');
 
-  console.log('1b) the deck key «ورود تصویر چارت» drives the tool');
+  console.log('1b) the deck key «ورود تصویر چارت» opens the OHLC environment, not the device storage');
   const deck = $('btn-import-image');
   const look = deck.className + '|' + deck.textContent + '|' + deck.getAttribute('title');
   ok('the published seam sees the deck key', win.ChartDnaOhlc.deckKey() === deck, (win.ChartDnaOhlc.deckKey() || {}).id);
+  ok('and it is ours to redirect', win.ChartDnaOhlc.deckTakeover() === true, 'deckTakeover()=' + win.ChartDnaOhlc.deckTakeover());
   deck.dispatchEvent(new win.Event('click', { bubbles: true }));
-  await sleep(40);
-  const deckInput = win.__deckInput;
-  ok('the key opens a detached input that never reaches the DOM',
-    !!deckInput && deckInput.type === 'file' && !deckInput.isConnected,
-    deckInput ? (deckInput.isConnected ? 'in the DOM' : 'detached') : 'no input built');
-  const pickFile = new win.File([fs.readFileSync(IMG)], 'deck-shot.jpg', { type: 'image/jpeg' });
-  Object.defineProperty(deckInput, 'files', { value: [pickFile], configurable: true });
-  deckInput.dispatchEvent(new win.Event('change'));
-  for (let i = 0; i < 150 && $('ohlc-modal').style.display !== 'flex'; i++) await sleep(100);
-  ok('one press, one picture: the panel opens by itself', $('ohlc-modal').style.display === 'flex',
+  await sleep(60);
+  ok('one press opens the reconstruction environment', $('ohlc-modal').style.display === 'flex',
     'display=' + $('ohlc-modal').style.display);
-  ok('the app read the same file for itself (we only watched)', typeof win.__deckImage === 'string' && win.__deckImage.indexOf('data:image') === 0,
-    (win.__deckImage || '').slice(0, 22) + '…');
-  const repPick = win.__ohlcReport || {};
-  const pickBars = Array.isArray(repPick.bars) ? repPick.bars.length : (repPick.bars || 0);
-  ok('and the picture it picked is the one measured', pickBars >= 250, pickBars + ' bars');
+  ok('the app’s own handler never ran, so the storage dialog stays closed',
+    win.__deckTaps === 0 && win.__deckInput === null,
+    'taps=' + win.__deckTaps + ', input=' + (win.__deckInput ? 'created' : 'never built'));
+  ok('the panel tells the user to pick the screenshot here', /حافظه/.test(txt('ohlc-status')),
+    txt('ohlc-status').split('\n')[0]);
   ok('the key is untouched: same icon, same name, same classes',
     look === deck.className + '|' + deck.textContent + '|' + deck.getAttribute('title'), JSON.stringify(deck.className));
-  ok('the panel says where the picture came from', /ورود تصویر چارت/.test(txt('ohlc-status')), txt('ohlc-status').split('\n')[0]);
   ok('no element of ours was added inside the deck or the app card',
     !$('remote-control-deck').querySelector('[id^="ohlc-"]') && !$('image-cropper-card').querySelector('[id^="ohlc-"]'), 'clean');
 
-  /* the same picture through another control must now be ignored */
+  /* the picture is chosen inside this environment */
+  let fileClicks = 0;
+  $('ohlc-file').addEventListener('click', () => fileClicks++);
+  $('ohlc-pick').dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(20);
+  ok('the panel’s own control opens its own file input', fileClicks === 1, fileClicks + ' clicks');
+  const imgHere = new win.File([fs.readFileSync(IMG)], 'from-gallery.jpg', { type: 'image/jpeg' });
+  Object.defineProperty($('ohlc-file'), 'files', { value: [imgHere], configurable: true });
+  $('ohlc-file').dispatchEvent(new win.Event('change', { bubbles: true }));
+  for (let i = 0; i < 40 && !/×\d+ پیکسل/.test(txt('ohlc-status')); i++) await sleep(50);
+  ok('and the screenshot picked there is loaded here', /×\d+ پیکسل/.test(txt('ohlc-status')),
+    txt('ohlc-status').split('\n')[0]);
+
+  /* any other image control in the app is left alone */
   $('ohlc-close').click();
   win.__appImage = null;
   const other = new win.File([fs.readFileSync(IMG)], 'other-shot.jpg', { type: 'image/jpeg' });
   Object.defineProperty($('app-file'), 'files', { value: [other], configurable: true });
   $('app-file').dispatchEvent(new win.Event('change', { bubbles: true }));
-  await sleep(500);
-  ok('a picture taken anywhere else does not open it', $('ohlc-modal').style.display === 'none' && typeof win.__appImage === 'string',
+  await sleep(400);
+  ok('a pick through another control does not open the panel',
+    $('ohlc-modal').style.display === 'none' && typeof win.__appImage === 'string',
     'display=' + $('ohlc-modal').style.display + ', app got its file');
-  ok('and the deck key is disarmed after one picture', win.__deckImage !== null, 'one shot only');
+
+  /* and one switch gives the key back to the app */
+  win.localStorage.setItem('chartdna_deck_takeover', '0');
+  $('btn-import-image').dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(60);
+  ok('with chartdna_deck_takeover=0 the key does what the app built it for',
+    win.__deckTaps === 1 && !!win.__deckInput && $('ohlc-modal').style.display === 'none',
+    'taps=' + win.__deckTaps + ', detached input=' + (win.__deckInput ? 'built' : 'none') +
+    ', display=' + $('ohlc-modal').style.display);
+  win.localStorage.removeItem('chartdna_deck_takeover');
 
   console.log('2) extraction through the file input');
   const file = new win.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
@@ -352,8 +367,8 @@ const ok = (name, cond, info) => {
   ok('pending queue emptied', dom2.window.sessionStorage.getItem('chartdna_ohlc_pending_pattern') === null);
   ok('still no page errors', errors.length === 0, errors.join(' | ') || 'none');
 
-  /* ---- a build that has no deck key: the fallback keeps the tool reachable ---- */
-  console.log('6) with no «ورود تصویر چارت» key in the page, any picture still works');
+  /* ---- a page without that key: nothing is intercepted, the tool is still reachable ---- */
+  console.log('6) a build without «ورود تصویر چارت» is left completely alone');
   const domN = await load({ idb }, '/nodeck.html');
   const winN = domN.window, docN = domN.window.document;
   await sleep(400);
@@ -362,13 +377,16 @@ const ok = (name, cond, info) => {
   const fN = new winN.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
   Object.defineProperty(docN.getElementById('app-file'), 'files', { value: [fN], configurable: true });
   docN.getElementById('app-file').dispatchEvent(new winN.Event('change', { bubbles: true }));
-  for (let i = 0; i < 150 && docN.getElementById('ohlc-modal').style.display !== 'flex'; i++) await sleep(100);
-  ok('a pick through the crop panel opens the tool there', docN.getElementById('ohlc-modal').style.display === 'flex',
+  await sleep(400);
+  ok('no panel opens on its own there', docN.getElementById('ohlc-modal').style.display !== 'flex',
+    'display=' + JSON.stringify(docN.getElementById('ohlc-modal').style.display) +
+    ', computed=' + winN.getComputedStyle(docN.getElementById('ohlc-modal')).display);
+  winN.ChartDnaOhlc.open();
+  ok('but the environment is still reachable', docN.getElementById('ohlc-modal').style.display === 'flex',
     'display=' + docN.getElementById('ohlc-modal').style.display);
-  const repN = winN.__ohlcReport || {};
-  ok('and it measured that picture', (Array.isArray(repN.bars) ? repN.bars.length : 0) >= 250,
-    (Array.isArray(repN.bars) ? repN.bars.length : 0) + ' bars');
-  ok('no page errors in the fallback build either', errors.length === 0, errors.join(' | ') || 'none');
+  ok('and it carries its own upload control', !!docN.getElementById('ohlc-file') && !!docN.getElementById('ohlc-pick'),
+    JSON.stringify((docN.getElementById('ohlc-pick') || {}).textContent || ''));
+  ok('no page errors in the second build either', errors.length === 0, errors.join(' | ') || 'none');
   try { domN.window.close(); } catch (e) { }
 
   await new Promise((r) => server.close(r));

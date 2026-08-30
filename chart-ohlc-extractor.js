@@ -2,9 +2,10 @@
  * Runs the pixel-measurement engine (chart-ohlc-engine.js) on a chart
  * screenshot, shows the reconstructed candlestick chart, and can register the
  * result as a Chart DNA dataset so the pattern / history search runs on it.
- * It has no button of its own: the app's own "select image" control drives it —
- * every pick, drop and paste in the app passes a File through a FileReader and
- * that is watched here, so the app's markup, styling and wording stay as they are.
+ * It has no button of its own: the app's picture-icon key in the recorder-like play
+ * strip (#btn-import-image, «ورود تصویر چارت») opens this environment instead of the
+ * device storage, and the screenshot is chosen here. The key keeps its icon, name and
+ * markup; only where it leads is different (see the deck block near the bottom).
  * Everything happens in the browser: no image and no number leaves the page.
  */
 (() => {
@@ -51,13 +52,14 @@
     run: 'استخراج کندل‌ها', csv: 'دانلود CSV', png: 'دانلود تصویر حاشیه‌نویسی‌شده',
     save: 'ثبت به‌عنوان دیتاست Chart DNA', saveSearch: 'ثبت و اجرای جستجو', close: 'بستن',
     busy: 'در حال پردازش…', grab: 'استفاده از تصویری که در برنامه آپلود کرده‌اید',
+    pick: '📷 انتخاب تصویر از حافظهٔ دستگاه', pickHint: 'تصویر اسکرین‌شات چارت را از حافظه انتخاب کنید',
     calibNote: 'برای کالیبراسیون دستی، روی خط‌های راهنمای محور قیمت در تصویر کلیک کنید و مقدارش را وارد کنید.'
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
 
-  /* there is no opener of our own any more: the app's own #btn-import-image key in
-     #remote-control-deck («ورود تصویر چارت») carries this tool, so not one element is
-     added to the app's page — see the deck block near the bottom of this file */
+  /* there is no opener of our own any more: the app's #btn-import-image key in
+     #remote-control-deck («ورود تصویر چارت») leads here, so not one element is added to
+     the app's page — see the deck block near the bottom of this file */
 
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
@@ -71,6 +73,7 @@
           <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
         </div>
         <div class="ohlc-actions" style="margin-top:8px">
+          <button class="ohlc-primary" id="ohlc-pick" type="button">${T.pick}</button>
           <button class="ohlc-secondary" id="ohlc-grab">${T.grab}</button>
           <button class="ohlc-primary" id="ohlc-run">${T.run}</button>
         </div>
@@ -157,6 +160,7 @@
   /* ------------------------------------------------------------ image input */
   const drop = $('ohlc-drop');
   drop.addEventListener('click', () => $('ohlc-file').click());
+  $('ohlc-pick').addEventListener('click', (e) => { e.stopPropagation(); $('ohlc-file').click(); });
   $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
   ['dragover', 'dragenter'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('ohlc-over'); }));
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('ohlc-over')));
@@ -531,18 +535,21 @@
   /* a seam the tests can drive; browsers get the plain reload */
   function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
 
-  /* ------------------------------------------------- driven by the deck's import key
+  /* ------------------------------------------------- the deck's import key leads here
    * The recorder-like strip in the app's sidebar (#remote-control-deck inside
-   * #sidebar-controls) carries «ورود تصویر چارت» — #btn-import-image. That single key
-   * drives this tool now; it is not renamed, restyled or given extra markup, clicking
-   * it only arms us for exactly one picture. The key builds a detached
-   * <input type="file"> that never enters the DOM (that is how the bundle does it), so
-   * a change listener on the page could not see the pick — but the file always goes
-   * through a FileReader, and that is where we look while armed. */
+   * #sidebar-controls) carries «ورود تصویر چارت» — #btn-import-image, a picture icon and
+   * nothing else. Pressing it used to leave the page and open the device's storage for a
+   * file. It now comes to the OHLC reconstruction environment instead, and the screenshot
+   * is picked here, in the panel.
+   *
+   * The app builds its <input type="file"> inside the click handler (a detached node,
+   * never in the DOM), so there is nothing to unbind: the way to keep the storage dialog
+   * shut is to stop that handler from running at all. A capture-phase listener on document
+   * swallows the click before React's delegated listener on the app root ever sees it.
+   * The key itself is not restyled, renamed, wrapped or given extra markup.
+   * localStorage.chartdna_deck_takeover = '0' gives the key back to the app. */
   const DECK_ID = 'btn-import-image';
   const DECK_TITLE = /ورود تصویر|آپلود تصویر|Import Chart Image|Upload.{0,12}[Ii]mage/;
-  const ARM_MS = 120000;                                       /* a long-enough window for the OS dialog */
-  let armedUntil = 0, lastPickSig = '', picking = false;
   function deckKey() {
     const byId = document.getElementById(DECK_ID);
     if (byId) return byId;
@@ -554,62 +561,32 @@
     return null;
   }
   function deckLabel() { const k = deckKey(); return k ? ((k.getAttribute('title') || k.textContent || '').trim() || DECK_ID) : ''; }
-  function srcNote() { return deckKey() ? 'از کلید «' + deckLabel() + '»' : 'از تصویری که در برنامه انتخاب شد'; }
-  function noteSource() {                        /* keep the counts, add where it came from */
-    const st = $('ohlc-status');
-    if (st) status(srcNote() + ' — اندازه‌گیری شد' + (st.textContent ? '\n' + st.textContent : ''));
+  function takeoverOn() {
+    try { return localStorage.getItem('chartdna_deck_takeover') !== '0'; } catch (e) { return true; }
+  }
+  function isDeckKey(node) {
+    if (!node || !node.closest) return null;
+    const b = node.closest('#' + DECK_ID) || node.closest('#remote-control-deck button');
+    if (!b) return null;
+    if (b.id === DECK_ID) return b;
+    return DECK_TITLE.test((b.getAttribute('title') || '') + ' ' + (b.textContent || '')) ? b : null;
   }
   document.addEventListener('click', (e) => {
-    const el = e.target;
-    if (!el || !el.closest) return;
-    const b = el.closest('#' + DECK_ID) || el.closest('#remote-control-deck button');
-    if (!b) return;
-    if (b.id !== DECK_ID && !DECK_TITLE.test((b.getAttribute('title') || '') + ' ' + (b.textContent || ''))) return;
-    armedUntil = Date.now() + ARM_MS;                            /* one picture, then quiet again */
+    if (!takeoverOn() || !isDeckKey(e.target)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();   /* the storage dialog stays closed */
+    show(true);
+    status(T.pickHint + (deckLabel() ? ' — اینجا همان کاری است که کلید «' + deckLabel() + '» به آن می‌آید' : ''));
   }, true);
-  async function onPickedImage(url, forced) {
+  /* a picture handed to us from anywhere else (a paste, a seam call) is still measured */
+  async function onPickedImage(url) {
     if (!url || typeof url !== 'string' || url.indexOf('data:image') !== 0) return;
-    if (!forced) {
-      if (deckKey() && Date.now() > armedUntil) return;          /* nobody asked from the deck key */
-      armedUntil = 0;
-    }
-    const sig = sigOf(url);
-    if (picking) return;
-    if (sig === lastPickSig && state.result) { show(true); return; }      /* the same picture again */
-    lastPickSig = sig;
-    picking = true;
-    try {
-      await new Promise((done) => loadImage(url, done));
-      status(srcNote() + ' — در حال اندازه‌گیری…');
-      const res = await run(sig);
-      if (res && res.bars && res.bars.length) { noteSource(); show(true); }   /* a chart: show the work */
-      else if (modal.style.display === 'flex') show(true);                /* panel already open: keep it in sync */
-    } catch (e) {
-      if (window.__ohlcLog) window.__ohlcLog('deck-driven extraction failed', e);
-    } finally { picking = false; }
+    await new Promise((done) => loadImage(url, done));
+    await run(sigOf(url));
+    show(true);
   }
-  (function hookDeckUploads() {
-    const proto = window.FileReader && window.FileReader.prototype;
-    if (!proto || proto.__ohlcPickHook) return;
-    proto.__ohlcPickHook = true;
-    const readAsDataURL = proto.readAsDataURL;
-    proto.readAsDataURL = function (blob) {
-      let picked = false;
-      try {
-        picked = !!blob && typeof File === 'function' && blob instanceof File &&
-          /^image\//.test(blob.type || '') && !/\.(csv|json|txt)$/i.test(blob.name || '');
-      } catch (e) { picked = false; }
-      if (picked) {
-        this.addEventListener('load', () => {
-          try { onPickedImage(typeof this.result === 'string' ? this.result : ''); } catch (e) { }
-        });
-      }
-      return readAsDataURL.apply(this, arguments);
-    };
-  })();
 
   window.ChartDnaOhlc = {
-    version: 6,
+    version: 7,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
@@ -623,8 +600,9 @@
     toCSV: () => window.ChartDNACV.toCSV(state.result),
     reload: reloadPage,
     open: () => show(true),
-    onPickedImage: (url) => onPickedImage(url, true),
-    deckKey: deckKey
+    onPickedImage: (url) => onPickedImage(url),
+    deckKey: deckKey,
+    deckTakeover: () => takeoverOn()
   };
 
   $('ohlc-save').addEventListener('click', () => saveDataset(false));
