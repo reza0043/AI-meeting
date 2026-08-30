@@ -49,9 +49,11 @@
   .ohlc-refrow button{white-space:nowrap;padding:8px 10px;font-size:12px}
   #ohlc-points input{background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:6px;font:inherit}
   #ohlc-points button{background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;padding:4px 8px;font-size:11px;cursor:pointer}
-  /* the three views share one frame: same box, same ratio, same length of the series */
-  #ohlc-chart,#ohlc-orig,#ohlc-ann{width:100%;height:auto;box-sizing:border-box;border:1px solid #334155;
-    border-radius:10px;background:#0b1220;display:block;margin-top:8px}
+  /* the three views share one frame: same box, same ratio, same length of the series.
+     the card rhythm (340px, 390px when there is room) is the one the app's own chart cards
+     use, and object-fit keeps the picture whole — so the page reads as one grid, not two */
+  #ohlc-chart,#ohlc-orig,#ohlc-ann{width:100%;height:auto;object-fit:contain;box-sizing:border-box;border:1px solid #334155;border-radius:10px;background:#0b1220;display:block;margin-top:8px}
+  @media(min-width:820px){#ohlc-chart,#ohlc-orig,#ohlc-ann{min-height:340px;max-height:390px}}
   #ohlc-status{margin-top:10px;color:#a7f3d0;font-size:12.5px;white-space:pre-wrap;line-height:1.7}
   .ohlc-warn{color:#fbbf24}.ohlc-err{color:#fca5a5}
   .ohlc-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11.5px;font-variant-numeric:tabular-nums}
@@ -270,10 +272,28 @@
   }
 
   /* --------------------------------------------------- manual axis anchors */
+  /* object-fit:contain can leave a band around the picture: map the pointer onto the
+     picture itself, and let a click on the band say so instead of inventing a row */
+  function contentBox(cv, r) {
+    if (!cv.width || !cv.height || !r.width || !r.height) return null;
+    const k = Math.min(r.width / cv.width, r.height / cv.height);
+    return { k, ox: (r.width - cv.width * k) / 2, oy: (r.height - cv.height * k) / 2 };
+  }
   $('ohlc-orig').addEventListener('click', (e) => {
     const cv = $('ohlc-orig'), r = cv.getBoundingClientRect();
+    const m = contentBox(cv, r);
     const sc = state.img ? state.img.naturalHeight / cv.height : 1;
-    const y = Math.round((e.clientY - r.top) * sc);
+    let by;
+    if (!m) by = e.clientY - r.top;                                      /* no layout to map */
+    else {
+      const bx = (e.clientX - r.left - m.ox) / m.k;
+      by = (e.clientY - r.top - m.oy) / m.k;
+      if (bx < 0 || by < 0 || bx > cv.width || by > cv.height) {
+        status('برای نقطهٔ مرجع روی خودِ تصویر کلیک کنید، نه روی حاشیهٔ کادر.', 'warn');
+        return;
+      }
+    }
+    const y = Math.round(by * sc);
     state.points.push({ row: y, price: '', source: 'manual-click' });
     renderPoints();
     status('نقطهٔ مرجع در ردیف ' + y + ' اضافه شد — قیمتش را وارد کنید.');
@@ -528,7 +548,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 11,
+    version: 12,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,

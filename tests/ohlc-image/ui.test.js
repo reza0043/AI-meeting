@@ -359,8 +359,17 @@ const ok = (name, cond, info) => {
     viewC.width + '×' + viewC.height + ' for a ' + im.naturalWidth + '×' + im.naturalHeight + ' picture');
   const css = Array.prototype.slice.call(win.document.querySelectorAll('style')).map((e) => e.textContent).join('\n');
   ok('and it is one shared rule, not three sizes of its own',
-    /#ohlc-chart,\s*#ohlc-orig,\s*#ohlc-ann\s*\{[^}]*width:100%;height:auto/.test(css) &&
-    !/#ohlc-chart\s*\{[^}]*height:300px/.test(css), 'one rule · height:auto · no fixed 300px box');
+    /#ohlc-chart,#ohlc-orig,#ohlc-ann\s*\{[^}]*width:100%;height:auto;object-fit:contain/.test(css) &&
+    !/#ohlc-chart\s*\{[^}]*height:300px/.test(css), 'one rule · height:auto · contain, never stretched');
+  const rhythm = css.match(/@media\(min-width:820px\)\{#ohlc-chart[^}]*\}/);
+  ok('the frame takes the app’s own card height, so the cards line up',
+    !!rhythm && /min-height:340px/.test(rhythm[0]) && /max-height:390px/.test(rhythm[0]),
+    rhythm ? rhythm[0].replace(/[#{}]/g, ' ').replace(/\s+/g, ' ').trim() : 'no shared rhythm');
+  const ourSrc = fs.readFileSync('/home/user/repo/chart-ohlc-extractor.js', 'utf8');
+  ok('and it is done on our own nodes: nothing of ours touches the app’s cards',
+    !/comparative-chart-card|pattern-overlay-canvas-card|image-cropper-card|chart-dna-app/.test(
+      ourSrc.replace(/'#btn-import-image'|DECK_ID[^\n]*|isDeckKey[\s\S]{0,400}/g, '')),
+    'no app selector in the panel styles');
   const sc = viewC.width / im.naturalWidth;
   const scan = (cv, hit) => {
     const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
@@ -411,6 +420,25 @@ const ok = (name, cond, info) => {
   $('ohlc-ref-row').value = '261'; $('ohlc-ref-price').value = '4600';
   $('ohlc-ref-add').click();
   ok('typed anchor appears in the list', /ردیف 261/.test($('ohlc-points').textContent), $('ohlc-points').textContent.trim().replace(/\s+/g, ' ').slice(0, 70));
+
+  /* the click has to land on the letterboxed picture, not on the box around it */
+  const pic = $('ohlc-orig'), savedRect = pic.getBoundingClientRect;
+  pic.getBoundingClientRect = () => ({ left: 100, top: 50, width: 1000, height: 400, right: 1100, bottom: 450, x: 100, y: 50 });
+  const fit = Math.min(1000 / pic.width, 400 / pic.height);
+  const offX = (1000 - pic.width * fit) / 2, offY = (400 - pic.height * fit) / 2;
+  const imgH = win.ChartDnaOhlc.image().naturalHeight;
+  const wantRow = Math.round(300 * (imgH / pic.height));
+  const ptsBefore = ($('ohlc-points').textContent.match(/ردیف/g) || []).length;
+  pic.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 100 + offX + 700 * fit, clientY: 50 + offY + 300 * fit }));
+  ok('a click on the picture adds the row it points at, through the letterbox math',
+    new RegExp('ردیف ' + wantRow).test($('ohlc-points').textContent),
+    'want row ' + wantRow + ' from (700,300) of a ' + pic.width + '×' + pic.height + ' frame shown in a 1000×400 box');
+  pic.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 100 + offX / 2, clientY: 50 + offY / 2 }));
+  ok('a click on the empty band beside the picture is refused, nothing is invented',
+    /حاشیهٔ کادر/.test($('ohlc-status').textContent) &&
+    ($('ohlc-points').textContent.match(/ردیف/g) || []).length === ptsBefore + 1,
+    'points: ' + ptsBefore + ' → ' + ($('ohlc-points').textContent.match(/ردیف/g) || []).length);
+  pic.getBoundingClientRect = savedRect;
   $('ohlc-run').click();
   for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
   const cal2 = ((win.__ohlcReport || {}).result || {}).calibration || {};
