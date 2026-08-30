@@ -55,8 +55,9 @@
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
 
-  /* there is no opener of our own any more: the app's own «انتخاب تصویر» control
-     carries this tool, so not one element is added to the app's page */
+  /* there is no opener of our own any more: the app's own #btn-import-image key in
+     #remote-control-deck («ورود تصویر چارت») carries this tool, so not one element is
+     added to the app's page — see the deck block near the bottom of this file */
 
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
@@ -530,14 +531,48 @@
   /* a seam the tests can drive; browsers get the plain reload */
   function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
 
-  /* ------------------------------------------------- driven by the app's own picker
-   * The app funnels every picture the user chooses — the «انتخاب تصویر» control, its
-   * drop zone and the paste — through a FileReader of a real File, so that is the one
-   * place a pick can be noticed without touching, restyling or renaming that control.
-   * Cropping also uses a FileReader, but on a canvas blob: ignored on purpose. */
-  let lastPickSig = '', picking = false;
-  async function onPickedImage(url) {
+  /* ------------------------------------------------- driven by the deck's import key
+   * The recorder-like strip in the app's sidebar (#remote-control-deck inside
+   * #sidebar-controls) carries «ورود تصویر چارت» — #btn-import-image. That single key
+   * drives this tool now; it is not renamed, restyled or given extra markup, clicking
+   * it only arms us for exactly one picture. The key builds a detached
+   * <input type="file"> that never enters the DOM (that is how the bundle does it), so
+   * a change listener on the page could not see the pick — but the file always goes
+   * through a FileReader, and that is where we look while armed. */
+  const DECK_ID = 'btn-import-image';
+  const DECK_TITLE = /ورود تصویر|آپلود تصویر|Import Chart Image|Upload.{0,12}[Ii]mage/;
+  const ARM_MS = 120000;                                       /* a long-enough window for the OS dialog */
+  let armedUntil = 0, lastPickSig = '', picking = false;
+  function deckKey() {
+    const byId = document.getElementById(DECK_ID);
+    if (byId) return byId;
+    const deck = document.getElementById('remote-control-deck');
+    const list = deck ? deck.querySelectorAll('button') : [];
+    for (let i = 0; i < list.length; i++) {
+      if (DECK_TITLE.test((list[i].getAttribute('title') || '') + ' ' + (list[i].textContent || ''))) return list[i];
+    }
+    return null;
+  }
+  function deckLabel() { const k = deckKey(); return k ? ((k.getAttribute('title') || k.textContent || '').trim() || DECK_ID) : ''; }
+  function srcNote() { return deckKey() ? 'از کلید «' + deckLabel() + '»' : 'از تصویری که در برنامه انتخاب شد'; }
+  function noteSource() {                        /* keep the counts, add where it came from */
+    const st = $('ohlc-status');
+    if (st) status(srcNote() + ' — اندازه‌گیری شد' + (st.textContent ? '\n' + st.textContent : ''));
+  }
+  document.addEventListener('click', (e) => {
+    const el = e.target;
+    if (!el || !el.closest) return;
+    const b = el.closest('#' + DECK_ID) || el.closest('#remote-control-deck button');
+    if (!b) return;
+    if (b.id !== DECK_ID && !DECK_TITLE.test((b.getAttribute('title') || '') + ' ' + (b.textContent || ''))) return;
+    armedUntil = Date.now() + ARM_MS;                            /* one picture, then quiet again */
+  }, true);
+  async function onPickedImage(url, forced) {
     if (!url || typeof url !== 'string' || url.indexOf('data:image') !== 0) return;
+    if (!forced) {
+      if (deckKey() && Date.now() > armedUntil) return;          /* nobody asked from the deck key */
+      armedUntil = 0;
+    }
     const sig = sigOf(url);
     if (picking) return;
     if (sig === lastPickSig && state.result) { show(true); return; }      /* the same picture again */
@@ -545,15 +580,15 @@
     picking = true;
     try {
       await new Promise((done) => loadImage(url, done));
-      status('تصویری که در برنامه انتخاب کردید اندازه‌گیری شد.');
+      status(srcNote() + ' — در حال اندازه‌گیری…');
       const res = await run(sig);
-      if (res && res.bars && res.bars.length) show(true);                   /* a chart: show the work */
-      else if (modal.style.display === 'flex') show(true);                  /* panel already open: keep it in sync */
+      if (res && res.bars && res.bars.length) { noteSource(); show(true); }   /* a chart: show the work */
+      else if (modal.style.display === 'flex') show(true);                /* panel already open: keep it in sync */
     } catch (e) {
-      if (window.__ohlcLog) window.__ohlcLog('pick-driven extraction failed', e);
+      if (window.__ohlcLog) window.__ohlcLog('deck-driven extraction failed', e);
     } finally { picking = false; }
   }
-  (function hookAppUploads() {
+  (function hookDeckUploads() {
     const proto = window.FileReader && window.FileReader.prototype;
     if (!proto || proto.__ohlcPickHook) return;
     proto.__ohlcPickHook = true;
@@ -574,7 +609,7 @@
   })();
 
   window.ChartDnaOhlc = {
-    version: 5,
+    version: 6,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
@@ -588,7 +623,8 @@
     toCSV: () => window.ChartDNACV.toCSV(state.result),
     reload: reloadPage,
     open: () => show(true),
-    onPickedImage: (url) => onPickedImage(url)
+    onPickedImage: (url) => onPickedImage(url, true),
+    deckKey: deckKey
   };
 
   $('ohlc-save').addEventListener('click', () => saveDataset(false));
