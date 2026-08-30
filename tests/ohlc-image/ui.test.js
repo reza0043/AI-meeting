@@ -208,12 +208,53 @@ const ok = (name, cond, info) => {
     GONE.every((id) => !$(id)), GONE.filter((id) => $(id)).join(',') || 'none of them in the DOM');
   ok('the rows keep only what the window still does',
     !!$('ohlc-run') && !!$('ohlc-csv') && !!$('ohlc-png') && !!$('ohlc-close'), 'run · csv · png · close');
-  ok('the image still enters through the drop zone (or a paste)', !!$('ohlc-drop') && !!$('ohlc-file'),
-    'drop zone + its own file input');
+  ok('the image still enters through the upload key (or a paste)', !!$('ohlc-drop') && !!$('ohlc-file'),
+    'dashed square + its file input');
   ok('the connection box is off the card', !/اتصال به موتور/.test($('ohlc-card').textContent), 'no such heading');
   ok('and nothing of ours can be called to write into the app',
     typeof win.ChartDnaOhlc.saveDataset === 'undefined' && typeof win.ChartDnaOhlc.reload === 'undefined',
     'saveDataset=' + typeof win.ChartDnaOhlc.saveDataset + ', reload=' + typeof win.ChartDnaOhlc.reload);
+
+  /* ---- one row of square keys above the picture, with the fit rule ---- */
+  const bar = $('ohlc-bar');
+  const keys = Array.prototype.slice.call(bar.children);
+  ok('the upload key, the run key and the three view keys are one row',
+    keys.length === 5 && keys.map((b) => b.id || b.dataset.view).join(',') === 'ohlc-drop,ohlc-run,chart,orig,ann',
+    keys.map((b) => b.id || b.dataset.view).join(' · '));
+  ok('every one of them is a square button',
+    keys.every((b) => b.tagName === 'BUTTON' && /(^| )ohlc-sq( |$)/.test(b.className) && !/ohlc-actions/.test(b.className)),
+    keys.map((b) => b.tagName + '.' + (b.className.match(/ohlc-[a-z]+/g) || []).slice(0, 2).join('+')).join(' | ').slice(0, 110));
+  ok('the row sits above the image of the chart',
+    (bar.compareDocumentPosition($('ohlc-chart')) & win.Node.DOCUMENT_POSITION_FOLLOWING) !== 0, 'bar → canvas');
+  ok('the old wide drop panel and the old tab strip are gone',
+    !$('ohlc-card').querySelector('.ohlc-tabs') && !$('ohlc-card').querySelector('.ohlc-actions [data-view]') &&
+    !$('ohlc-card').querySelector('.ohlc-actions #ohlc-run'), 'no strip, no duplicate run key');
+  ok('a word too long for its square is written on two lines', $('ohlc-run').classList.contains('ohlc-2'),
+    $('ohlc-run').className.replace('ohlc-sq', '□'));
+  ok('and when even two lines will not hold it, only the icon is left',
+    $('ohlc-drop').classList.contains('ohlc-ic') && $('ohlc-card').querySelector('[data-view="chart"]').classList.contains('ohlc-ic'),
+    'drop=' + $('ohlc-drop').className.replace('ohlc-sq ohlc-drop', '□') +
+    ' · chart view=' + $('ohlc-card').querySelector('[data-view="chart"]').className.replace('ohlc-sq', '□'));
+  ok('nothing is thrown away: the words stay in the tooltip and inside the key',
+    /رها کنید/.test($('ohlc-drop').getAttribute('title') || '') && /Ctrl\+V/.test($('ohlc-drop').querySelector('.ohlc-lbl').textContent),
+    'title + label intact, the label is only not painted');
+  const origKey = $('ohlc-card').querySelector('[data-view="orig"]');
+  ok('a label that fits in two lines is not reduced to an icon',
+    origKey.classList.contains('ohlc-2') && !origKey.classList.contains('ohlc-ic'), origKey.className.replace('ohlc-sq', '□'));
+  origKey.dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(60);
+  ok('the view keys still switch what is on screen',
+    origKey.getAttribute('aria-selected') === 'true' && $('ohlc-orig').style.display === 'block' &&
+    $('ohlc-chart').classList.contains('ohlc-hidden'), 'orig on, chart hidden');
+  const chartKey = $('ohlc-card').querySelector('[data-view="chart"]');
+  chartKey.dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(60);
+  ok('and switch back', chartKey.getAttribute('aria-selected') === 'true' &&
+    !$('ohlc-chart').classList.contains('ohlc-hidden') && origKey.getAttribute('aria-selected') === 'false',
+    'chart on again');
+  ok('the file input is not nested in a button (no interactive content inside one)',
+    $('ohlc-file').parentElement === bar.parentElement && !$('ohlc-drop').querySelector('input'),
+    'input lives in <' + $('ohlc-file').parentElement.tagName.toLowerCase() + '> next to the row');
 
   console.log('1b) the deck key «ورود تصویر چارت» opens the OHLC environment, not the device storage');
   const deck = $('btn-import-image');
@@ -239,7 +280,8 @@ const ok = (name, cond, info) => {
   $('ohlc-file').addEventListener('click', () => fileClicks++);
   $('ohlc-drop').dispatchEvent(new win.Event('click', { bubbles: true }));
   await sleep(20);
-  ok('the centred drop zone opens the file input of the panel', fileClicks === 1, fileClicks + ' clicks');
+  ok('the upload key opens the file input of the panel, once (the input is not inside it)',
+    fileClicks === 1, fileClicks + ' clicks');
   const imgHere = new win.File([fs.readFileSync(IMG)], 'from-gallery.jpg', { type: 'image/jpeg' });
   Object.defineProperty($('ohlc-file'), 'files', { value: [imgHere], configurable: true });
   $('ohlc-file').dispatchEvent(new win.Event('change', { bubbles: true }));
@@ -304,7 +346,7 @@ const ok = (name, cond, info) => {
   ok('reconstruction canvas painted', $('ohlc-chart').width > 300 && $('ohlc-chart').height > 100, $('ohlc-chart').width + 'x' + $('ohlc-chart').height);
   ok('annotated overlay drawn without error', !/خطا در رسم/.test(st) && $('ohlc-ann').width > 0, 'canvas ' + $('ohlc-ann').width + 'x' + $('ohlc-ann').height);
   $('ohlc-drop').dispatchEvent(new win.Event('dragover', { bubbles: true }));
-  ok('drop zone highlights on dragover', /ohlc-over/.test($('ohlc-drop').className), $('ohlc-drop').className);
+  ok('the upload key highlights on dragover', /ohlc-over/.test($('ohlc-drop').className), $('ohlc-drop').className);
 
   console.log('2b) typed axis anchor');
   $('ohlc-ref-row').value = '261'; $('ohlc-ref-price').value = '4600';

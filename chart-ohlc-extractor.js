@@ -23,8 +23,23 @@
   .ohlc-box h3{margin:0 0 8px;font-size:13px;color:#cbd5e1}
   .ohlc-box label{display:block;font-size:11.5px;color:#94a3b8;margin:7px 0 4px}
   .ohlc-box input,.ohlc-box select{width:100%;box-sizing:border-box;background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:9px;padding:8px;font-size:12.5px;font-family:inherit}
-  .ohlc-drop{border:1.5px dashed #334155;border-radius:12px;padding:16px;text-align:center;color:#94a3b8;font-size:13px;cursor:pointer}
-  .ohlc-drop.ohlc-over{border-color:#10b981;color:#a7f3d0}
+  .ohlc-bar{display:flex;flex-wrap:nowrap;align-items:stretch;gap:6px;margin:10px 0 2px}
+  .ohlc-sq{flex:1 1 0;aspect-ratio:1/1;min-width:42px;max-width:86px;box-sizing:border-box;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;gap:2px;padding:4px 3px;border:1px solid #334155;border-radius:12px;
+            background:#111d2e;color:#e2e8f0;font:inherit;font-size:10px;line-height:1.15;font-weight:600;cursor:pointer;
+            text-align:center;overflow:hidden}
+  .ohlc-sq:hover{border-color:#10b981}
+  .ohlc-sq:disabled{opacity:.45;cursor:not-allowed}
+  .ohlc-sq .ohlc-ico{font-size:16px;line-height:1}
+  .ohlc-sq .ohlc-lbl{width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+  .ohlc-sq.ohlc-1 .ohlc-lbl{-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis}
+  .ohlc-sq.ohlc-ic .ohlc-lbl{display:none}
+  .ohlc-sq.ohlc-ic{font-size:19px}
+  .ohlc-sq.ohlc-ic .ohlc-ico{font-size:21px}
+  .ohlc-sq[data-view][aria-selected=true]{border-color:#22d3ee;background:#082f49;color:#a5f3fc}
+  .ohlc-drop{border-style:dashed;color:#94a3b8}
+  .ohlc-drop.ohlc-over{border-color:#10b981;color:#a7f3d0;background:#04150f}
+  #ohlc-drop{position:relative}
   .ohlc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .ohlc-actions button{border:0;border-radius:10px;padding:10px 13px;cursor:pointer;font-weight:700;font-family:inherit;font-size:12.5px}
   .ohlc-actions button:disabled{opacity:.45;cursor:not-allowed}
@@ -43,9 +58,6 @@
   .ohlc-table th{color:#94a3b8;font-weight:600}
   .ohlc-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;margin-top:8px}
   .ohlc-kv b{color:#94a3b8;font-weight:600}
-  .ohlc-tabs{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-  .ohlc-tabs button{background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:9px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit}
-  .ohlc-tabs button[aria-selected=true]{background:#10b981;color:#04130e;border-color:#10b981;font-weight:700}
   .ohlc-hidden{display:none!important}
   @media(max-width:820px){.ohlc-grid{grid-template-columns:1fr}}
   `;
@@ -69,20 +81,17 @@
     <h2>${T.title}</h2>
     <div class="ohlc-grid" style="margin-top:12px">
       <div>
-        <div class="ohlc-drop" id="ohlc-drop">تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)
-          <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
+        <div class="ohlc-bar" id="ohlc-bar">
+          <button class="ohlc-sq ohlc-drop" id="ohlc-drop" type="button" title="تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)" aria-label="تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)><span class="ohlc-ico">📥</span><span class="ohlc-lbl">تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)</span></button>
+          <button class="ohlc-sq ohlc-primary" id="ohlc-run" type="button" title="${T.run}" aria-label="${T.run}"><span class="ohlc-ico">📈</span><span class="ohlc-lbl">${T.run}</span></button>
+          <button class="ohlc-sq" data-view="chart" type="button" aria-selected="true" title="کندل‌های بازسازی‌شده" aria-label="کندل‌های بازسازی‌شده"><span class="ohlc-ico">🕯️</span><span class="ohlc-lbl">کندل‌های بازسازی‌شده</span></button>
+          <button class="ohlc-sq" data-view="orig" type="button" aria-selected="false" title="تصویر اصلی" aria-label="تصویر اصلی"><span class="ohlc-ico">🖼️</span><span class="ohlc-lbl">تصویر اصلی</span></button>
+          <button class="ohlc-sq" data-view="ann" type="button" aria-selected="false" title="تصویر با مارک‌ها" aria-label="تصویر با مارک‌ها"><span class="ohlc-ico">🎯</span><span class="ohlc-lbl">تصویر با مارک‌ها</span></button>
         </div>
-        <div class="ohlc-actions" style="margin-top:8px">
-          <button class="ohlc-primary" id="ohlc-run">${T.run}</button>
-        </div>
+        <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
+        <canvas id="ohlc-chart" width="1000" height="300"></canvas>
         <canvas id="ohlc-orig" class="ohlc-hidden"></canvas>
         <canvas id="ohlc-ann" class="ohlc-hidden"></canvas>
-        <div class="ohlc-tabs">
-          <button data-view="chart" aria-selected="true">کندل‌های بازسازی‌شده</button>
-          <button data-view="orig">تصویر اصلی</button>
-          <button data-view="ann">تصویر با مارک‌ها</button>
-        </div>
-        <canvas id="ohlc-chart" width="1000" height="300"></canvas>
       </div>
       <div>
         <div class="ohlc-box">
@@ -143,14 +152,51 @@
   });
 
   /* ------------------------------------------------------------ open/close */
-  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
+  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; if (v) refitBar(); };
+
+  /* one row, squares, and a word that does not fit is broken over two lines —
+     and only when even that is too much does the key fall back to its icon alone
+     (the words stay in the title and in the DOM, so nothing is lost) */
+  function fitBar() {
+    const bar = $('ohlc-bar');
+    if (!bar) return 0;
+    const list = bar.querySelectorAll('.ohlc-sq');
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i], lbl = b.querySelector('.ohlc-lbl');
+      if (!lbl) continue;
+      b.classList.remove('ohlc-ic', 'ohlc-1', 'ohlc-2');
+      if (!b.getAttribute('title')) b.setAttribute('title', (lbl.textContent || '').trim());
+      const boxW = lbl.clientWidth, wide = lbl.scrollWidth, boxH = lbl.clientHeight, tall = lbl.scrollHeight;
+      if (!boxW && !boxH) {                     /* no layout here (headless): count the letters */
+        const n = (lbl.textContent || '').replace(/\s+/g, ' ').trim().length;
+        b.classList.add(n > 18 ? 'ohlc-ic' : (n > 8 ? 'ohlc-2' : 'ohlc-1'));
+        continue;
+      }
+      if (wide <= boxW + 1) b.classList.add('ohlc-1');
+      else if (tall <= boxH + 1) b.classList.add('ohlc-2');
+      else b.classList.add('ohlc-ic');
+    }
+    return list.length;
+  }
+  let fitQueued = false;
+  function refitBar() {
+    if (fitQueued) return;
+    fitQueued = true;
+    (window.requestAnimationFrame || function (f) { return setTimeout(f, 32); })(() => { fitQueued = false; fitBar(); });
+  }
+  fitBar();
+  try { window.addEventListener('resize', refitBar); } catch (e) { }
+  try { if (window.ResizeObserver && $('ohlc-bar')) new ResizeObserver(refitBar).observe($('ohlc-bar')); } catch (e) { }
   $('ohlc-close').addEventListener('click', () => show(false));
   modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
 
   /* ------------------------------------------------------------ image input */
   const drop = $('ohlc-drop');
-  drop.addEventListener('click', () => $('ohlc-file').click());
+  drop.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'ohlc-file') return;    /* the input lives inside the key */
+    $('ohlc-file').click();
+  });
   $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
   ['dragover', 'dragenter'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('ohlc-over'); }));
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('ohlc-over')));
@@ -296,10 +342,10 @@
     chart.classList.toggle('ohlc-hidden', v !== 'chart');
     orig.classList.toggle('ohlc-hidden', v !== 'orig');
     ann.classList.toggle('ohlc-hidden', v !== 'ann');
-    modal.querySelectorAll('.ohlc-tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === v)));
+    modal.querySelectorAll('.ohlc-sq[data-view]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === v)));
     if (v === 'orig') orig.style.display = 'block';
   }
-  modal.querySelectorAll('.ohlc-tabs button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+  modal.querySelectorAll('.ohlc-sq[data-view]').forEach((b) => b.addEventListener('click', () => { setView(b.dataset.view); refitBar(); }));
   function drawResults(res) {
     const chart = $('ohlc-chart');
     chart.width = Math.min(1400, Math.max(600, res.bars.length * 4));
@@ -457,7 +503,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 9,
+    version: 10,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
