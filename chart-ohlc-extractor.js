@@ -23,27 +23,28 @@
   .ohlc-box h3{margin:0 0 8px;font-size:13px;color:#cbd5e1}
   .ohlc-box label{display:block;font-size:11.5px;color:#94a3b8;margin:7px 0 4px}
   .ohlc-box input,.ohlc-box select{width:100%;box-sizing:border-box;background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:9px;padding:8px;font-size:12.5px;font-family:inherit}
-  .ohlc-bar{display:flex;flex-wrap:nowrap;align-items:stretch;gap:6px;margin:10px 0 2px}
-  .ohlc-sq{flex:1 1 0;aspect-ratio:1/1;min-width:42px;max-width:86px;box-sizing:border-box;display:flex;flex-direction:column;
-            align-items:center;justify-content:center;gap:2px;padding:4px 3px;border:1px solid #334155;border-radius:12px;
-            background:#111d2e;color:#e2e8f0;font:inherit;font-size:10px;line-height:1.15;font-weight:600;cursor:pointer;
-            text-align:center;overflow:hidden}
-  .ohlc-sq:hover{border-color:#10b981}
-  .ohlc-sq:disabled{opacity:.45;cursor:not-allowed}
-  .ohlc-sq .ohlc-ico{font-size:16px;line-height:1}
-  .ohlc-sq .ohlc-lbl{width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
-  .ohlc-sq.ohlc-1 .ohlc-lbl{-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis}
-  .ohlc-sq.ohlc-ic .ohlc-lbl{display:none}
-  .ohlc-sq.ohlc-ic{font-size:19px}
-  .ohlc-sq.ohlc-ic .ohlc-ico{font-size:21px}
-  .ohlc-sq[data-view][aria-selected=true]{border-color:#22d3ee;background:#082f49;color:#a5f3fc}
-  .ohlc-drop{border-style:dashed;color:#94a3b8}
-  .ohlc-drop.ohlc-over{border-color:#10b981;color:#a7f3d0;background:#04150f}
-  #ohlc-drop{position:relative}
+  /* the six keys sit in one row, exactly like #remote-control-deck: 36px tall, rounded,
+     equal widths, icon only; the values below are the same numbers the app's utilities give
+     (flex-1 / h-9 / rounded-lg / gap-1 / p-1.5), so the row looks the same with or without them */
+  #ohlc-bar{margin:10px 0 2px;background:#0e1826f0;border-color:#1e293b;gap:4px;padding:6px}
+  .ohlc-dk{box-sizing:border-box;flex:1 1 0;min-width:0;min-height:36px;border:1px solid #334155;border-radius:8px;
+           background:#111d2ecc;color:#cbd5e1;cursor:pointer;display:flex;align-items:center;justify-content:center;
+           transition:all .15s ease;font:inherit}
+  .ohlc-dk:hover{border-color:#10b981;color:#a7f3d0;background:#0f2a20}
+  .ohlc-dk:active{transform:scale(.95)}
+  .ohlc-dk:disabled{opacity:.45;cursor:not-allowed}
+  .ohlc-dk svg{width:16px;height:16px;transition:transform .15s ease}
+  .ohlc-dk:hover svg{transform:scale(1.1)}
+  .ohlc-dk[data-view][aria-selected=true]{background:#082f49;border-color:#22d3ee;color:#a5f3fc}
+  #ohlc-drop{color:#94a3b8}
+  #ohlc-drop.ohlc-over{border-color:#10b981;color:#a7f3d0;background:#04150f}
+  #ohlc-confirm{color:#10b981}
+  #ohlc-confirm:not(:disabled){background:#062b1e;border-color:#10b981}
+  @media(max-width:430px){#ohlc-bar{gap:2px;padding:4px}.ohlc-dk{min-height:34px;border-radius:7px}}
   .ohlc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .ohlc-actions button{border:0;border-radius:10px;padding:10px 13px;cursor:pointer;font-weight:700;font-family:inherit;font-size:12.5px}
   .ohlc-actions button:disabled{opacity:.45;cursor:not-allowed}
-  .ohlc-primary{background:#10b981;color:#04130e}.ohlc-secondary{background:#1e293b;color:#e2e8f0}.ohlc-danger{background:#7f1d1d;color:#fecaca}
+  .ohlc-secondary{background:#1e293b;color:#e2e8f0}
   .ohlc-refrow{display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;margin-top:8px}
   .ohlc-refrow input{width:100%;box-sizing:border-box;background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:9px;padding:8px;font:inherit}
   .ohlc-refrow button{white-space:nowrap;padding:8px 10px;font-size:12px}
@@ -67,7 +68,7 @@
   const T = {
     title: 'ورود تصویر',
     run: 'استخراج کندل‌ها', csv: 'دانلود CSV', png: 'دانلود تصویر حاشیه‌نویسی‌شده',
-    close: 'بستن',
+    confirm: 'تأیید و بازگشت به صفحهٔ برنامه',
     busy: 'در حال پردازش…', pickHint: 'تصویر اسکرین‌شات چارت را از حافظه انتخاب کنید',
     calibNote: 'برای کالیبراسیون دستی، روی خط‌های راهنمای محور قیمت در تصویر کلیک کنید و مقدارش را وارد کنید.'
   };
@@ -77,6 +78,26 @@
      #remote-control-deck («ورود تصویر چارت») leads here, so not one element is added to
      the app's page — see the deck block near the bottom of this file */
 
+  /* the key row of this window copies the app's own deck row (#remote-control-deck):
+     the same class list, the same icon library (lucide-react v0.475.0 — the exact node
+     data of each glyph, so the row cannot drift from the app's look), and like that row
+     it carries the icon alone: the words live in title / aria-label, not on the face */
+  const DECK_KEY = 'flex-1 h-9 rounded-lg flex items-center justify-center transition-all duration-150 border cursor-pointer active:scale-95 group relative';
+  const DROP_HINT = 'تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)';
+  const LUCIDE = (name, node) => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"' +
+    ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-' + name +
+    ' w-4 h-4 group-hover:scale-110 transition-transform">' + node + '</svg>';
+  const ICO = {
+    img: LUCIDE('image', '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'),
+    scan: LUCIDE('scan-line', '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>'),
+    bars: LUCIDE('chart-no-axes-column', '<line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/>'),
+    eye: LUCIDE('eye', '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>'),
+    cross: LUCIDE('crosshair', '<circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>'),
+    check: LUCIDE('circle-check', '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>')
+  };
+  const keyHtml = (attr, ico, text) => '<button class="ohlc-dk ' + DECK_KEY + '" ' + attr +
+    ' title="' + text + '" aria-label="' + text + '">' + ico + '</button>';
+
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
   modal.innerHTML = `
@@ -84,12 +105,13 @@
     <h2>${T.title}</h2>
     <div class="ohlc-grid" style="margin-top:12px">
       <div>
-        <div class="ohlc-bar" id="ohlc-bar">
-          <button class="ohlc-sq ohlc-drop" id="ohlc-drop" type="button" title="تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)" aria-label="تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)><span class="ohlc-ico">📥</span><span class="ohlc-lbl">تصویر نمودار را اینجا رها کنید، یا کلیک کنید و فایل را انتخاب کنید (می‌توانید تصویر را با Ctrl+V هم بچسبانید)</span></button>
-          <button class="ohlc-sq ohlc-primary" id="ohlc-run" type="button" title="${T.run}" aria-label="${T.run}"><span class="ohlc-ico">📈</span><span class="ohlc-lbl">${T.run}</span></button>
-          <button class="ohlc-sq" data-view="chart" type="button" aria-selected="true" title="کندل‌های بازسازی‌شده" aria-label="کندل‌های بازسازی‌شده"><span class="ohlc-ico">🕯️</span><span class="ohlc-lbl">کندل‌های بازسازی‌شده</span></button>
-          <button class="ohlc-sq" data-view="orig" type="button" aria-selected="false" title="تصویر اصلی" aria-label="تصویر اصلی"><span class="ohlc-ico">🖼️</span><span class="ohlc-lbl">تصویر اصلی</span></button>
-          <button class="ohlc-sq" data-view="ann" type="button" aria-selected="false" title="تصویر با مارک‌ها" aria-label="تصویر با مارک‌ها"><span class="ohlc-ico">🎯</span><span class="ohlc-lbl">تصویر با مارک‌ها</span></button>
+        <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors" id="ohlc-bar">
+          ${keyHtml('id="ohlc-drop" type="button"', ICO.img, DROP_HINT)}
+          ${keyHtml('id="ohlc-run" type="button"', ICO.scan, T.run)}
+          ${keyHtml('data-view="chart" type="button" aria-selected="true"', ICO.bars, 'کندل‌های بازسازی‌شده')}
+          ${keyHtml('data-view="orig" type="button" aria-selected="false"', ICO.eye, 'تصویر اصلی')}
+          ${keyHtml('data-view="ann" type="button" aria-selected="false"', ICO.cross, 'تصویر با مارک‌ها')}
+          ${keyHtml('id="ohlc-confirm" type="button" disabled', ICO.check, T.confirm)}
         </div>
         <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
         <canvas id="ohlc-chart"></canvas>
@@ -127,13 +149,12 @@
     <div class="ohlc-actions">
       <button class="ohlc-secondary" id="ohlc-csv" disabled>${T.csv}</button>
       <button class="ohlc-secondary" id="ohlc-png" disabled>${T.png}</button>
-      <button class="ohlc-danger" id="ohlc-close">${T.close}</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, points: [], running: false, imgKey: null };
+  const state = { img: null, result: null, templates: null, points: [], running: false, imgKey: null, confirmedKey: null };
 
   /* remember the label fields, the panel is closed between uploads */
   const FORM = 'chartdna_ohlc_form';
@@ -155,51 +176,34 @@
   });
 
   /* ------------------------------------------------------------ open/close */
-  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; if (v) refitBar(); };
+  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
 
-  /* one row, squares, and a word that does not fit is broken over two lines —
-     and only when even that is too much does the key fall back to its icon alone
-     (the words stay in the title and in the DOM, so nothing is lost) */
-  function fitBar() {
-    const bar = $('ohlc-bar');
-    if (!bar) return 0;
-    const list = bar.querySelectorAll('.ohlc-sq');
-    for (let i = 0; i < list.length; i++) {
-      const b = list[i], lbl = b.querySelector('.ohlc-lbl');
-      if (!lbl) continue;
-      b.classList.remove('ohlc-ic', 'ohlc-1', 'ohlc-2');
-      if (!b.getAttribute('title')) b.setAttribute('title', (lbl.textContent || '').trim());
-      const boxW = lbl.clientWidth, wide = lbl.scrollWidth, boxH = lbl.clientHeight, tall = lbl.scrollHeight;
-      if (!boxW && !boxH) {                     /* no layout here (headless): count the letters */
-        const n = (lbl.textContent || '').replace(/\s+/g, ' ').trim().length;
-        b.classList.add(n > 18 ? 'ohlc-ic' : (n > 8 ? 'ohlc-2' : 'ohlc-1'));
-        continue;
-      }
-      if (wide <= boxW + 1) b.classList.add('ohlc-1');
-      else if (tall <= boxH + 1) b.classList.add('ohlc-2');
-      else b.classList.add('ohlc-ic');
+  /* the sixth key: «تأیید» — what was measured is accepted, the window closes and the
+     user is back on the app's first page. Nothing is written into the app: the candles,
+     the CSV and the marked picture stay here, exactly as before */
+  function confirmFlow() {
+    const has = !!(state.result && state.result.bars && state.result.bars.length);
+    if (has) {
+      state.confirmedKey = state.imgKey || null;
+      try {
+        const r = window.__ohlcReport;
+        if (r) { r.confirmedAt = new Date().toISOString(); r.confirmedCandles = state.result.bars.length; }
+      } catch (e) { /* our own note, never a write into the app */ }
+      status('روند تأیید شد — ' + state.result.bars.length + ' کندل؛ پنجره بسته شد و به صفحهٔ برنامه برگشتید. ' +
+        'با همان کلید «ورود تصویر چارت» می‌توانید ادامه دهید.');
+    } else {
+      status('چیزی استخراج نشده بود؛ پنجره بسته شد.');
     }
-    return list.length;
+    show(false);
+    return has;
   }
-  let fitQueued = false;
-  function refitBar() {
-    if (fitQueued) return;
-    fitQueued = true;
-    (window.requestAnimationFrame || function (f) { return setTimeout(f, 32); })(() => { fitQueued = false; fitBar(); });
-  }
-  fitBar();
-  try { window.addEventListener('resize', refitBar); } catch (e) { }
-  try { if (window.ResizeObserver && $('ohlc-bar')) new ResizeObserver(refitBar).observe($('ohlc-bar')); } catch (e) { }
-  $('ohlc-close').addEventListener('click', () => show(false));
+  $('ohlc-confirm').addEventListener('click', confirmFlow);
   modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
 
   /* ------------------------------------------------------------ image input */
   const drop = $('ohlc-drop');
-  drop.addEventListener('click', (e) => {
-    if (e.target && e.target.id === 'ohlc-file') return;    /* the input lives inside the key */
-    $('ohlc-file').click();
-  });
+  drop.addEventListener('click', () => $('ohlc-file').click());
   $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
   ['dragover', 'dragenter'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('ohlc-over'); }));
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('ohlc-over')));
@@ -238,6 +242,8 @@
     im.onload = () => {
       state.img = im;
       state.imgKey = sigOf(src);
+      state.confirmedKey = null;
+      $('ohlc-confirm').disabled = true;
       try { URL.revokeObjectURL(src); } catch (e) { /* not a blob url */ }
       drawOriginal();
       done && done();
@@ -380,10 +386,10 @@
     chart.classList.toggle('ohlc-hidden', v !== 'chart');
     orig.classList.toggle('ohlc-hidden', v !== 'orig');
     ann.classList.toggle('ohlc-hidden', v !== 'ann');
-    modal.querySelectorAll('.ohlc-sq[data-view]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === v)));
+    modal.querySelectorAll('.ohlc-dk[data-view]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === v)));
     if (v === 'orig') orig.style.display = 'block';
   }
-  modal.querySelectorAll('.ohlc-sq[data-view]').forEach((b) => b.addEventListener('click', () => { setView(b.dataset.view); refitBar(); }));
+  modal.querySelectorAll('.ohlc-dk[data-view]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   function drawResults(res) {
     /* both are measured at the full picture, then placed in the one shared frame */
     const a = document.createElement('canvas');
@@ -391,6 +397,7 @@
     const b = document.createElement('canvas');
     try { window.ChartDNACV.renderAnnotated(b, state.img, res); paintInto($('ohlc-ann'), b); } catch (e) { console.warn(e); }
     setView('chart');
+    $('ohlc-confirm').disabled = !(res.bars && res.bars.length);
     const rows = res.bars.slice(0, 14).concat(res.bars.length > 16 ? [{ candle: '…' }] : []).concat(res.bars.slice(-4));
     $('ohlc-table').innerHTML = '<table class="ohlc-table"><thead><tr><th>#</th><th>Date</th><th>O</th><th>H</th><th>L</th><th>C</th><th>Dir</th><th>Conf</th><th>note</th></tr></thead><tbody>' +
       rows.map((b) => b.candle === '…' ? '<tr><td colspan=9 style="text-align:center">…</td></tr>'
@@ -548,7 +555,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 12,
+    version: 13,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
@@ -560,6 +567,9 @@
     run: (key) => run(key),
     toCSV: () => window.ChartDNACV.toCSV(state.result),
     open: () => show(true),
+    close: () => show(false),
+    confirm: confirmFlow,
+    confirmed: () => state.confirmedKey,
     onPickedImage: (url) => onPickedImage(url),
     deckKey: deckKey,
     deckTakeover: () => takeoverOn()

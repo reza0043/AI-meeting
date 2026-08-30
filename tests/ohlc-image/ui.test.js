@@ -191,9 +191,15 @@ const ok = (name, cond, info) => {
     'inline ' + JSON.stringify($('ohlc-modal').style.display) + ', computed ' + win.getComputedStyle($('ohlc-modal')).display);
   win.ChartDnaOhlc.open();
   ok('the panel still opens through the published seam', $('ohlc-modal').style.display === 'flex');
-  $('ohlc-close').click();
-  ok('and closes again', $('ohlc-modal').style.display === 'none');
-  ok('drag & drop and paste are wired', /dragover/.test($('ohlc-drop').getAttribute('class') || '') || !!$('ohlc-drop'), 'drop zone present');
+  doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  ok('Escape still closes it (there is no close key on the card any more)',
+    $('ohlc-modal').style.display === 'none' && !$('ohlc-close'), 'display=' + $('ohlc-modal').style.display);
+  win.ChartDnaOhlc.open();
+  $('ohlc-modal').dispatchEvent(new win.Event('click', { bubbles: true }));
+  ok('and so does a click on the backdrop beside the card', $('ohlc-modal').style.display === 'none',
+    'display=' + $('ohlc-modal').style.display);
+  win.ChartDnaOhlc.open();
+  ok('drag & drop and paste are wired on the upload key', !!$('ohlc-drop') && !!$('ohlc-file'), 'icon key + its input');
 
   /* what the window is called, and what is not called any more */
   const h2 = $('ohlc-card').querySelector('h2');
@@ -203,44 +209,69 @@ const ok = (name, cond, info) => {
     'next sibling is <' + h2.nextElementSibling.tagName + ' class="' + h2.nextElementSibling.className + '">');
   ok('and the old wording is nowhere in the panel',
     !$('ohlc-card').textContent.match(/بازسازی OHLC از اسکرین|computer vision|حافظهٔ مدل/), 'clean');
-  const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace'];
+  const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace', 'ohlc-close'];
   ok('the pick / grab / save / save-and-search keys are gone, and their options with them',
     GONE.every((id) => !$(id)), GONE.filter((id) => $(id)).join(',') || 'none of them in the DOM');
-  ok('the rows keep only what the window still does',
-    !!$('ohlc-run') && !!$('ohlc-csv') && !!$('ohlc-png') && !!$('ohlc-close'), 'run · csv · png · close');
+  ok('the bottom row keeps only the two downloads; «بستن» moved up as the sixth key',
+    !!$('ohlc-run') && !!$('ohlc-csv') && !!$('ohlc-png') && !$('ohlc-close') &&
+    Array.prototype.slice.call($('ohlc-card').querySelector('.ohlc-actions').children).map((b) => b.id).join(',') === 'ohlc-csv,ohlc-png',
+    'csv · png only · ' + ($('ohlc-confirm') ? 'confirm is in the top row' : 'no confirm key'));
   ok('the image still enters through the upload key (or a paste)', !!$('ohlc-drop') && !!$('ohlc-file'),
-    'dashed square + its file input');
+    'icon key + its file input');
+  ok('«تأیید» starts out disabled: there is nothing to confirm yet', $('ohlc-confirm').disabled === true,
+    'disabled=' + $('ohlc-confirm').disabled);
   ok('the connection box is off the card', !/اتصال به موتور/.test($('ohlc-card').textContent), 'no such heading');
   ok('and nothing of ours can be called to write into the app',
     typeof win.ChartDnaOhlc.saveDataset === 'undefined' && typeof win.ChartDnaOhlc.reload === 'undefined',
     'saveDataset=' + typeof win.ChartDnaOhlc.saveDataset + ', reload=' + typeof win.ChartDnaOhlc.reload);
 
-  /* ---- one row of square keys above the picture, with the fit rule ---- */
+  /* ---- six keys in one row, in the app's own deck format ---- */
   const bar = $('ohlc-bar');
   const keys = Array.prototype.slice.call(bar.children);
-  ok('the upload key, the run key and the three view keys are one row',
-    keys.length === 5 && keys.map((b) => b.id || b.dataset.view).join(',') === 'ohlc-drop,ohlc-run,chart,orig,ann',
+  ok('six keys in one row: upload, run, the three views, and «تأیید»',
+    keys.length === 6 && keys.map((b) => b.id || b.dataset.view).join(',') === 'ohlc-drop,ohlc-run,chart,orig,ann,ohlc-confirm',
     keys.map((b) => b.id || b.dataset.view).join(' · '));
-  ok('every one of them is a square button',
-    keys.every((b) => b.tagName === 'BUTTON' && /(^| )ohlc-sq( |$)/.test(b.className) && !/ohlc-actions/.test(b.className)),
-    keys.map((b) => b.tagName + '.' + (b.className.match(/ohlc-[a-z]+/g) || []).slice(0, 2).join('+')).join(' | ').slice(0, 110));
+  ok('the row wears the deck’s own container classes',
+    /(^| )flex( |$)/.test(bar.className) && /items-center/.test(bar.className) && /justify-between/.test(bar.className) &&
+    /rounded-xl/.test(bar.className) && /p-1\.5/.test(bar.className) && /gap-1/.test(bar.className),
+    bar.className.replace('ohlc-bar ', '').slice(0, 96));
+  const DECK_KEY = 'flex-1 h-9 rounded-lg flex items-center justify-center transition-all duration-150 border ' +
+    'cursor-pointer active:scale-95 group relative';
+  ok('every key carries the very class list the app’s deck keys use',
+    keys.every((b) => b.className.replace('ohlc-dk ', '') === DECK_KEY),
+    keys.length + ' keys · ' + (keys[0].className.replace('ohlc-dk ', '') === DECK_KEY ? 'identical to #btn-import-image' : keys[0].className));
+  ok('icon only, no writing on the face of any of them',
+    keys.every((b) => b.tagName === 'BUTTON' && b.firstElementChild && b.firstElementChild.tagName === 'svg' &&
+      b.children.length === 1 && !Array.prototype.slice.call(b.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim())) &&
+    !$('ohlc-card').querySelector('.ohlc-lbl'),
+    'one svg each · no text node · no .ohlc-lbl anywhere');
+  ok('the icons come from the same library as the app (lucide, stroke-based, 24×24)',
+    keys.every((b) => {
+      const svg = b.firstElementChild;
+      return /(^| )lucide( |$)/.test(svg.getAttribute('class') || '') && svg.getAttribute('viewBox') === '0 0 24 24' &&
+        svg.getAttribute('stroke') === 'currentColor' && svg.getAttribute('fill') === 'none' && svg.getAttribute('stroke-width') === '2';
+    }),
+    keys.map((b) => ((b.firstElementChild.getAttribute('class') || '').match(/lucide-[a-z0-9-]+/g) || ['?'])[0]).join(' · '));
+  ok('and each icon is the one that means its own job',
+    ['lucide-image', 'lucide-scan-line', 'lucide-chart-no-axes-column', 'lucide-eye', 'lucide-crosshair', 'lucide-circle-check']
+      .every((n, i) => (keys[i].firstElementChild.getAttribute('class') || '').indexOf(n) >= 0),
+    ['image', 'scan-line', 'chart-no-axes-column', 'eye', 'crosshair', 'circle-check'].join(' · '));
+  const words = { 'ohlc-drop': /Ctrl\+V/, 'ohlc-run': /استخراج کندل/, chart: /بازسازی‌شده/, orig: /تصویر اصلی/, ann: /مارک‌ها/, 'ohlc-confirm': /تأیید/ };
+  ok('nothing was thrown away: the sentence of every key is its tooltip and its name',
+    Object.keys(words).every((k) => {
+      const b = k.indexOf('ohlc-') === 0 ? $(k) : bar.querySelector('[data-view="' + k + '"]');
+      const t = b.getAttribute('title') || '', a = b.getAttribute('aria-label') || '';
+      return words[k].test(t) && words[k].test(a) && t.indexOf('<') < 0 && a.indexOf('class=') < 0;
+    }), 'title + aria-label carry the words, and both parse clean');
+  ok('the fit machinery of the labelled row is deleted, not hidden',
+    !/\.ohlc-sq|ohlc-ic|line-clamp/.test(Array.prototype.slice.call(win.document.querySelectorAll('style')).map((e) => e.textContent).join('\n')),
+    'no square-key CSS left in the page');
   ok('the row sits above the image of the chart',
     (bar.compareDocumentPosition($('ohlc-chart')) & win.Node.DOCUMENT_POSITION_FOLLOWING) !== 0, 'bar → canvas');
   ok('the old wide drop panel and the old tab strip are gone',
     !$('ohlc-card').querySelector('.ohlc-tabs') && !$('ohlc-card').querySelector('.ohlc-actions [data-view]') &&
     !$('ohlc-card').querySelector('.ohlc-actions #ohlc-run'), 'no strip, no duplicate run key');
-  ok('a word too long for its square is written on two lines', $('ohlc-run').classList.contains('ohlc-2'),
-    $('ohlc-run').className.replace('ohlc-sq', '□'));
-  ok('and when even two lines will not hold it, only the icon is left',
-    $('ohlc-drop').classList.contains('ohlc-ic') && $('ohlc-card').querySelector('[data-view="chart"]').classList.contains('ohlc-ic'),
-    'drop=' + $('ohlc-drop').className.replace('ohlc-sq ohlc-drop', '□') +
-    ' · chart view=' + $('ohlc-card').querySelector('[data-view="chart"]').className.replace('ohlc-sq', '□'));
-  ok('nothing is thrown away: the words stay in the tooltip and inside the key',
-    /رها کنید/.test($('ohlc-drop').getAttribute('title') || '') && /Ctrl\+V/.test($('ohlc-drop').querySelector('.ohlc-lbl').textContent),
-    'title + label intact, the label is only not painted');
   const origKey = $('ohlc-card').querySelector('[data-view="orig"]');
-  ok('a label that fits in two lines is not reduced to an icon',
-    origKey.classList.contains('ohlc-2') && !origKey.classList.contains('ohlc-ic'), origKey.className.replace('ohlc-sq', '□'));
   origKey.dispatchEvent(new win.Event('click', { bubbles: true }));
   await sleep(60);
   ok('the view keys still switch what is on screen',
@@ -290,7 +321,7 @@ const ok = (name, cond, info) => {
     txt('ohlc-status').split('\n')[0]);
 
   /* any other image control in the app is left alone */
-  $('ohlc-close').click();
+  $('ohlc-confirm').dispatchEvent(new win.Event('click', { bubbles: true }));   /* nothing extracted yet: it just closes */
   win.__appImage = null;
   const other = new win.File([fs.readFileSync(IMG)], 'other-shot.jpg', { type: 'image/jpeg' });
   Object.defineProperty($('app-file'), 'files', { value: [other], configurable: true });
@@ -475,6 +506,26 @@ const ok = (name, cond, info) => {
   ok('every row got a date between the two anchors', data.filter((l) => /,2026-\d\d-\d\d,/.test(l)).length === nBars,
     data.filter((l) => /,2026-\d\d-\d\d,/.test(l)).length + ' dated rows');
   ok('Time column stays empty', (lines[50] || '').split(',')[2] === '', 'row 50: ' + lines[50]);
+
+  console.log('3b) «تأیید» — the sixth key closes the window and stays read-only');
+  const ck = $('ohlc-confirm');
+  ok('the confirm key is armed only once something was extracted', ck.disabled === false, 'disabled=' + ck.disabled);
+  win.ChartDnaOhlc.open(); await sleep(20);
+  ok('the window is open before the confirm', $('ohlc-modal').style.display === 'flex', 'display=' + $('ohlc-modal').style.display);
+  ck.dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(80);
+  ok('one press closes the window — the user is back on the app’s first page',
+    $('ohlc-modal').style.display === 'none', 'display=' + $('ohlc-modal').style.display);
+  ok('and the flow is marked as confirmed, in our own report only',
+    !!win.ChartDnaOhlc.confirmed() && !!win.__ohlcReport && typeof win.__ohlcReport.confirmedAt === 'string' &&
+    win.__ohlcReport.confirmedCandles === nBars,
+    'confirmed=' + win.ChartDnaOhlc.confirmed() + ' · at ' + (win.__ohlcReport || {}).confirmedAt + ' · ' + (win.__ohlcReport || {}).confirmedCandles + ' candles');
+  ok('the picture and the numbers survive it: reopening shows the same result',
+    (win.ChartDnaOhlc.open(), $('ohlc-modal').style.display === 'flex') && $('ohlc-chart').width > 0 &&
+    win.ChartDnaOhlc.toCSV().trim().split('\r\n').length === nBars + 1,
+    'canvas ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' · csv still ' + nBars + ' rows');
+  ok('confirming wrote nothing to the app: no dataset store, no search press',
+    idbLog.opens === 0 && searchClicks === 0, 'IndexedDB opens=' + idbLog.opens + ', app search clicks=' + searchClicks);
 
   console.log('4) the window writes nothing into the app any more');
   await sleep(300);
