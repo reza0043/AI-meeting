@@ -162,7 +162,7 @@ const ok = (name, cond, info) => {
         result: {
           objectStoreNames: { contains: () => true }, createObjectStore() { },
           transaction() {
-            const tx = { objectStore: () => ({ put: (rec) => { idbLog.rec = rec; idbLog.store = tx.__s; return { }; } }), oncomplete: null, onerror: null };
+            const tx = { objectStore: (nm) => ({ put: (rec) => { idbLog.rec = rec; idbLog.store = nm; return { }; } }), oncomplete: null, onerror: null };
             setTimeout(() => { if (tx.oncomplete) tx.oncomplete(); }, 0);
             return tx;
           },
@@ -468,10 +468,17 @@ const ok = (name, cond, info) => {
     !!rhythm && /min-height:340px/.test(rhythm[0]) && /max-height:390px/.test(rhythm[0]),
     rhythm ? rhythm[0].replace(/[#{}]/g, ' ').replace(/\s+/g, ' ').trim() : 'no shared rhythm');
   const ourSrc = fs.readFileSync('/home/user/repo/chart-ohlc-extractor.js', 'utf8');
-  ok('and it is done on our own nodes: nothing of ours touches the app’s cards',
-    !/comparative-chart-card|pattern-overlay-canvas-card|image-cropper-card|chart-dna-app/.test(
-      ourSrc.replace(/'#btn-import-image'|DECK_ID[^\n]*|isDeckKey[\s\S]{0,400}/g, '')),
-    'no app selector in the panel styles');
+  /* the trend overlay sits over the app's crop card, so that card's id is read — its rect.
+     What must stay true is the rest: we never style it, never hide it, never put a node
+     inside it, and we keep our hands off the other three React-owned cards entirely. */
+  const mentions = (ourSrc.replace(/'#btn-import-image'|DECK_ID[^\n]*|isDeckKey[\s\S]{0,400}/g, '')
+    .match(/image-cropper-card|comparative-chart-card|pattern-overlay-canvas-card|chart-dna-app/g) || []);
+  ok('and it is done on our own nodes: the crop card is measured, never restyled',
+    mentions.length === 1 && mentions[0] === 'image-cropper-card' &&
+    /cropCard = \(\) => document\.getElementById\('image-cropper-card'\)/.test(ourSrc) &&
+    !/cropper-card'\)\s*\.style|cropCard\(\)\.(style|classList|appendChild|innerHTML|remove)/.test(ourSrc) &&
+    !/#(image-cropper-card|comparative-chart-card|pattern-overlay-canvas-card)/.test(ourSrc),
+    'mentions: ' + (mentions.join(', ') || 'none') + ' · one getElementById for its rect, no selector, no mutation');
   const sc = viewC.width / im.naturalWidth;
   const scan = (cv, hit) => {
     const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
@@ -486,7 +493,8 @@ const ok = (name, cond, info) => {
     }
     return { lo, hi, n };
   };
-  const onDark = (r, g, b) => Math.abs(r - 11) + Math.abs(g - 18) + Math.abs(b - 32) > 40;
+  const isTrend = (r, g, b) => r > 240 && g > 195 && g < 235 && b < 110;   /* #facc15 / #fde047 */
+  const onDark = (r, g, b) => Math.abs(r - 11) + Math.abs(g - 18) + Math.abs(b - 32) > 40 && !isTrend(r, g, b);
   const painted = scan(viewC, onDark);
   const geo = res.geometry;
   const span = 2 * (geo.pitch || 6) * sc + 2;   /* the mask box is a hair wider than the outermost bodies */
@@ -499,6 +507,38 @@ const ok = (name, cond, info) => {
      wick, the marked view must have laid a mark over the untouched screenshot */
   const dA = viewA.getContext('2d').getImageData(0, 0, viewA.width, viewA.height).data;
   const dO = viewO.getContext('2d').getImageData(0, 0, viewO.width, viewO.height).data;
+  /* #facc15 / #fde047 — the trend line and its two prices; the low-confidence tick is
+     #f59e0b and the candles are cyan/red, so anything found here can only be the line */
+  const chartD = $('ohlc-chart').getContext('2d').getImageData(0, 0, $('ohlc-chart').width, $('ohlc-chart').height).data;
+  let yellow = 0;
+  for (let i = 0; i < chartD.length; i += 4) {
+    if (chartD[i] > 240 && chartD[i + 1] > 195 && chartD[i + 1] < 235 && chartD[i + 2] < 110) yellow++;
+  }
+  const nOk = res.bars.filter((b) => b.status === 'ok' && b.close != null).length;
+  const tr0 = win.ChartDnaOhlc.trend();
+  ok('the trend line is drawn over the reconstructed view too', yellow > 400,
+     yellow + ' line pixels on a ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' frame');
+  const ys = res.bars.filter((b) => b.status === 'ok' && b.close != null).map((b) => b.close);
+  const N = ys.length, mx = (N - 1) / 2, my = ys.reduce((a, v) => a + v, 0) / N;
+  let num = 0, den = 0;
+  ys.forEach((v, i) => { num += (i - mx) * (v - my); den += (i - mx) * (i - mx); });
+  const sl = num / den, ic = my - sl * mx;
+  const sse = ys.reduce((a, v, i) => a + (v - (ic + sl * i)) ** 2, 0);
+  const sst = ys.reduce((a, v) => a + (v - my) ** 2, 0);
+  ok('it is a fit to the closes that were measured, and only to them',
+    !!(tr0 && tr0.ok) && tr0.n === nOk && Math.abs(tr0.slope - sl) < 1e-5 &&
+    Math.abs(tr0.intercept - ic) < 0.02 && Math.abs(tr0.r2 - (1 - sse / sst)) < 1e-3 &&
+    tr0.values.length === nOk && tr0.closes.length === nOk && tr0.lo <= Math.min.apply(null, ys) + 1e-9 &&
+    tr0.hi >= Math.max.apply(null, ys) - 1e-9,
+    'slope ' + tr0.slope + ' vs ' + sl.toFixed(6) + ' · r² ' + tr0.r2 + ' vs ' + (1 - sse / sst).toFixed(4));
+  ok('the direction it reports agrees with its own slope, and the window says so plainly',
+    tr0.direction === (tr0.slope > 0 ? 'up' : tr0.slope < 0 ? 'down' : 'range') &&
+    Math.abs(tr0.start - ic) <= 0.005 && Math.abs(tr0.end - (ic + sl * (N - 1))) <= 0.005 &&
+    Math.abs(tr0.risePct - (tr0.end - tr0.start) / Math.abs(tr0.start) * 100) < 0.01,
+    tr0.direction + ' · ' + tr0.start + '→' + tr0.end + ' (' + tr0.risePct + '٪)');
+  ok('the line really is y = slope·k + intercept', nOk > 2 &&
+     Math.abs(tr0.values[nOk - 1] - (tr0.intercept + tr0.slope * (nOk - 1))) < 0.02,
+     'end ' + tr0.values[nOk - 1] + ' vs ' + (tr0.intercept + tr0.slope * (nOk - 1)).toFixed(4));
   let at = 0, tot = 0;
   res.bars.forEach((b) => {
     if (b.status !== 'ok' || b.confidence < 0.9) return;
@@ -567,6 +607,10 @@ const ok = (name, cond, info) => {
   ok('Time column stays empty', (lines[50] || '').split(',')[2] === '', 'row 50: ' + lines[50]);
 
   console.log('3b) «تأیید» — the sixth key closes the window and stays read-only');
+  /* the overlay is placed from the app's own rect and jsdom has no layout: give the
+     crop stage one, so a real placement can be checked */
+  const appCv = $('app-canvas');
+  if (appCv) appCv.getBoundingClientRect = () => ({ left: 30, top: 50, width: 600, height: 300, right: 630, bottom: 350, x: 30, y: 50 });
   const ck = $('ohlc-confirm');
   ok('the confirm key is armed only once something was extracted', ck.disabled === false, 'disabled=' + ck.disabled);
   win.ChartDnaOhlc.open(); await sleep(20);
@@ -583,23 +627,92 @@ const ok = (name, cond, info) => {
     (win.ChartDnaOhlc.open(), $('ohlc-modal').style.display === 'flex') && $('ohlc-chart').width > 0 &&
     win.ChartDnaOhlc.toCSV().trim().split('\r\n').length === nBars + 1,
     'canvas ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' · csv still ' + nBars + ' rows');
-  ok('confirming wrote nothing to the app: no dataset store, no search press',
-    idbLog.opens === 0 && searchClicks === 0, 'IndexedDB opens=' + idbLog.opens + ', app search clicks=' + searchClicks);
+  ok('confirming opened the app\u2019s store once and pressed nothing itself',
+    idbLog.opens === 1 && searchClicks === 0, 'IndexedDB opens=' + idbLog.opens + ', app search clicks=' + searchClicks);
+  ok('the report now carries the line that was confirmed',
+    !!(win.__ohlcReport.confirmedTrend && win.__ohlcReport.confirmedTrend.n === nOk) &&
+    win.__ohlcReport.confirmedTrend.slope === tr0.slope && win.__ohlcReport.confirmedTrend.r2 === tr0.r2,
+    JSON.stringify(win.__ohlcReport.confirmedTrend));
+  ok('and the same numbers are in the run report', win.__ohlcReport.trend &&
+    win.__ohlcReport.trend.n === nOk && win.__ohlcReport.trend.values.length === nOk,
+    'trend for ' + nOk + ' closes');
 
-  console.log('4) the window writes nothing into the app any more');
+  console.log('4) what «تأیید» hands to the engine — the dataset, the library, the selection');
   await sleep(300);
-  ok('the app\u2019s dataset store was never opened', idbLog.opens === 0, 'IndexedDB opens=' + idbLog.opens);
-  ok('no pattern was queued for the library', win.sessionStorage.getItem('chartdna_ohlc_pending_pattern') === null);
-  ok('nothing was queued to auto-run the app search', win.sessionStorage.getItem('chartdna_ohlc_autosearch') === null);
-  ok('the app\u2019s own search button never got a click from us', searchClicks === 0, searchClicks + ' clicks');
-  const lsKeys = [];
-  for (let i = 0; i < win.localStorage.length; i++) lsKeys.push(win.localStorage.key(i));
-  ok('the user\u2019s dataset selection and pattern library are untouched',
-    lsKeys.indexOf('chartdna_selected_dataset_ids') < 0 && lsKeys.indexOf('chartdna_saved_patterns') < 0,
-    'localStorage: ' + lsKeys.join(',') );
-  const ours = lsKeys.filter((k) => /^chartdna_/.test(k));
-  ok('nothing at all is kept under chartdna_*: the label panel stored the form, and it is gone',
-    ours.length === 0, ours.join(',') || 'nothing under chartdna_*');
+  const wr = await win.__ohlcWrite;
+  ok('the hand-over finished without an error', !!(wr && !wr.error), JSON.stringify(wr));
+  const rec = idbLog.rec || {};
+  ok('one dataset in the app\u2019s own store, under the app\u2019s own key',
+    idbLog.store === 'market_datasets' && rec.id === wr.id && /^pxrec-/.test(rec.id),
+    'store=' + idbLog.store + ' · id=' + rec.id);
+  ok('it is a market_datasets record with the app\u2019s fields',
+    rec.name === wr.name && rec.symbol === 'IMAGE' && rec.timeframe === '1h' &&
+    rec.source === 'pixel-reconstruction' && typeof rec.note === 'string' && rec.note.length > 20,
+    rec.name + ' · ' + rec.source);
+  ok('every candle carries the four prices, the confidence and the note that explains it',
+    Array.isArray(rec.candles) && rec.candles.length === nOk && rec.candles.every((c) =>
+      typeof c.open === 'number' && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close) &&
+      typeof c.confidence === 'number' && 'notes' in c && c.volume === 0 && !!c.timestamp),
+    (rec.candles || []).length + ' candles · first: ' + JSON.stringify((rec.candles || [])[0]));
+  ok('nothing was left out of what the picture yielded — the axis, the residuals, the tag check',
+    !!(rec.origin && rec.origin.axis && rec.origin.axis.refs && rec.origin.axis.refs.length >= 2 &&
+      rec.origin.axis.equation && typeof rec.origin.pixels.width === 'number' &&
+      rec.origin.candles === nBars && rec.origin.incomplete === (nBars - nOk) &&
+      typeof rec.origin.meanConfidence === 'number' && rec.origin.grid && rec.origin.grid.pitch > 0),
+    JSON.stringify(rec.origin && { candles: rec.origin.candles, measured: rec.origin.measured, usdPerPx: rec.origin.usdPerPx, axis: rec.origin.axis.model }));
+  ok('the trend line and its numbers ride along on the record',
+    !!rec.trend && rec.trend.n === nOk && rec.trend.slope === tr0.slope && rec.trend.r2 === tr0.r2 &&
+    rec.trend.start === tr0.start && rec.trend.end === tr0.end && rec.trend.model === tr0.model &&
+    rec.trend.unit === 'price per candle', JSON.stringify(rec.trend));
+  ok('the dataset was added to the app\u2019s selection, not written over it',
+    JSON.parse(win.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === wr.id,
+    win.localStorage.getItem('chartdna_selected_dataset_ids'));
+  ok('two entries went to the pattern library, both searchable',
+    wr.patterns.length === 2 && wr.patterns[0] === 'custom_dna_px_' + wr.id &&
+    /_trend$/.test(wr.patterns[1]) && wr.patternStates.length === 2,
+    wr.patterns.join(' + ') + ' → ' + wr.patternStates.join(','));
+  const pend = JSON.parse(win.sessionStorage.getItem('chartdna_px_pending_pattern') || 'null');
+  ok('this page had no library yet, so both entries wait for the next load instead of clobbering the seed',
+    wr.waitingForLoad === true && Array.isArray(pend) && pend.length === 2 &&
+    pend[0].id === wr.patterns[0] && pend[1].id === wr.patterns[1],
+    'queued: ' + (Array.isArray(pend) ? pend.map((x) => x.id).join(' + ') : 'nothing'));
+  const closes = (rec.candles || []).map((c) => c.close);
+  ok('the first entry is exactly the closes the engine compares',
+    pend[0].points.join() === closes.join() && pend[0].normalizedPoints.length === nOk &&
+    pend[0].normalizedPoints.every((v) => v >= -1.0001 && v <= 1.0001) && pend[0].category === 'Pixel trend',
+    pend[0].points.slice(0, 3).join(', ') + ' … ' + pend[0].points[pend[0].points.length - 1]);
+  ok('the second is the line itself, and its note says plainly that a straight ramp is a weak query',
+    pend[1].points.join() === tr0.values.join() && /راستای صاف/.test(pend[1].notes) &&
+    /کمترین‌مربعات/.test(pend[1].notes) && pend[1].name === wr.name + ' · trend line',
+    pend[1].name + ' · ' + String(pend[1].notes).slice(0, 64) + '…');
+  ok('the names keep clear of the sweep that deletes the old image records',
+    wr.patterns.every((p) => p.indexOf('img-') !== 0) &&
+    !/from image|کادر برنامه|از تصویر/i.test(wr.name) && !/^img-/.test(wr.id),
+    wr.id + ' · ' + wr.name);
+  ok('no search was run for the user and no reload was forced', searchClicks === 0 &&
+    !/location\.reload|__chartDnaReload/.test(fs.readFileSync('/home/user/repo/chart-ohlc-extractor.js', 'utf8')),
+    'app search clicks=' + searchClicks);
+  ok('the trend line is painted over «محیط الگو» as a sibling that cannot be clicked', (function () {
+    const ov = $('ohlc-trend-overlay');
+    const app = $('app-canvas');
+    if (!ov || !app) return false;
+    const r = ov.getBoundingClientRect ? ov.style : null;
+    return ov.parentNode === doc.body && ov.parentNode !== $('image-cropper-card') &&
+      /pointer-events: none/.test(ov.getAttribute('style') || '') &&
+      ov.width > 0 && ov.height > 0 && !!r && !!ov.getAttribute('title') && app.parentNode === $('image-cropper-card');
+  })(), (function () { const o = $('ohlc-trend-overlay'); return o ? o.width + '×' + o.height + ' over ' + (o.style.left || '?') + ',' + (o.style.top || '?') : 'no overlay'; })());
+  const ovd = $('ohlc-trend-overlay') && $('ohlc-trend-overlay').getContext('2d').getImageData(0, 0, $('ohlc-trend-overlay').width, $('ohlc-trend-overlay').height).data;
+  let oy = 0, ogrey = 0;
+  if (ovd) for (let i = 0; i < ovd.length; i += 4) {
+    if (ovd[i] > 240 && ovd[i + 1] > 195 && ovd[i + 1] < 235 && ovd[i + 2] < 110) oy++;
+    if (ovd[i + 3] > 60 && ovd[i] > 120 && ovd[i] < 180) ogrey++;
+  }
+  ok('the overlay carries the line and, faintly, the closes it was fitted on', oy > 300 && ogrey > 200,
+    oy + ' line px · ' + ogrey + ' close px');
+  ok('the overlay is ours to switch off again', win.ChartDnaOhlc.overlay(false) === false &&
+    !$('ohlc-trend-overlay') && win.ChartDnaOhlc.overlay(true) === true && !!$('ohlc-trend-overlay'),
+    'off then on');
+  ok('the store is opened once in all of this — no reload loop on the app', idbLog.opens === 1, 'opens=' + idbLog.opens);
   ok('no script errors on the page', errors.length === 0, errors.join(' | ') || 'none');
 
   /* a page that loads with the app's own data present must not have it touched */
@@ -608,18 +721,64 @@ const ok = (name, cond, info) => {
   await sleep(900);
   const ls2 = [];
   for (let i = 0; i < dom2.window.localStorage.length; i++) ls2.push(dom2.window.localStorage.key(i));
-  ok('an existing library and selection survive a load of our window untouched',
+  ok('loading our window alone leaves the library and the selection exactly as they were',
     dom2.window.localStorage.getItem('chartdna_saved_patterns') === patSeed &&
     dom2.window.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1"]' &&
-    ls2.every((k) => !/^chartdna_ohlc_pending/.test(k)), ls2.join(','));
+    !dom2.window.sessionStorage.getItem('chartdna_px_pending_pattern'), ls2.join(','));
+  /* same page, this time with a library already there: both entries are appended to it */
+  const w2 = dom2.window, d2 = dom2.window.document;
+  const app2 = d2.getElementById('app-canvas');
+  if (app2) app2.getBoundingClientRect = () => ({ left: 8, top: 12, width: 520, height: 260, right: 528, bottom: 272, x: 8, y: 12 });
+  w2.ChartDnaOhlc.open(); await sleep(30);
+  const f2 = new w2.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
+  Object.defineProperty(d2.getElementById('ohlc-file'), 'files', { value: [f2], configurable: true });
+  d2.getElementById('ohlc-file').dispatchEvent(new w2.Event('change', { bubbles: true }));
+  await sleep(400);
+  d2.getElementById('ohlc-run').click();
+  for (let i = 0; i < 160 && /پردازش/.test(d2.getElementById('ohlc-status').textContent); i++) await sleep(250);
+  const bars2 = ((w2.__ohlcReport || {}).bars || []).length;
+  ok('the second page measured the same picture', bars2 >= 250, bars2 + ' bars');
+  d2.getElementById('ohlc-confirm').dispatchEvent(new w2.Event('click', { bubbles: true }));
+  await sleep(300);
+  const wr2 = w2.__ohlcWrite || {};
+  const lib2 = JSON.parse(w2.localStorage.getItem('chartdna_saved_patterns') || '[]');
+  ok('with a library present, both entries are written into it and the user\u2019s own stays first',
+    !wr2.error && wr2.waitingForLoad === false && wr2.patternStates.join() === 'added,added' &&
+    lib2.length === 3 && lib2[0].id === 'builtin_1' && lib2[1].id === wr2.patterns[0] && lib2[2].id === wr2.patterns[1],
+    lib2.map((p) => p.id + '(' + (p.points || []).length + ')').join(' '));
+  ok('the line entry is a straight ramp once normalised, which is why it carries the warning',
+    lib2.length === 3 && (() => {
+      const t = lib2[2], u = (t.points || []).slice(1).map((v, i) => v - t.points[i]);
+      const flat = u.every((dv) => Math.abs(dv - u[0]) < 0.02);
+      return flat && /راستای صاف/.test(t.notes) && Math.abs(t.normalizedPoints[0] + 1) < 0.01 && Math.abs(t.normalizedPoints[t.points.length - 1] - 1) < 0.01;
+    })(), lib2.length === 3 ? lib2[2].name + ' · ' + lib2[2].category : '—');
+  ok('the selection grows instead of being replaced',
+    JSON.parse(w2.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === 'ds-user-1,' + wr2.id,
+    w2.localStorage.getItem('chartdna_selected_dataset_ids'));
+  ok('the overlay follows that page\u2019s crop window, at its rect', (() => {
+    const o = d2.getElementById('ohlc-trend-overlay');
+    return !!o && o.width === 520 && o.height === 260 && o.style.left === '8px' && o.style.top === '12px';
+  })(), (function () { const o = d2.getElementById('ohlc-trend-overlay'); return o ? o.width + '×' + o.height + ' @' + o.style.left + ',' + o.style.top : 'no overlay'; })());
+  /* React would persist its own copy of the library on any change, rolling our write back:
+     the bounded re-append has to survive exactly that */
+  w2.localStorage.setItem('chartdna_saved_patterns', patSeed);
+  await sleep(2100);
+  const lib3 = JSON.parse(w2.localStorage.getItem('chartdna_saved_patterns') || '[]');
+  ok('a write-back from the app does not cost us our two entries',
+    lib3.length === 3 && lib3.some((p) => p.id === wr2.patterns[0]) && lib3.some((p) => /_trend$/.test(p.id)) &&
+    lib3[0].id === 'builtin_1', lib3.map((p) => p.id).join(' | '));
+  ok('and that page was fed too: the store was opened once more, no more', idbLog.opens === 2, 'opens=' + idbLog.opens);
+  ok('still no click on «جستجو» from us in either page', searchClicks === 0, searchClicks + ' clicks');
   try { dom2.window.close(); } catch (e) { }
 
   console.log('5) the extraction itself still works through what is left');
+  const opensBefore = idbLog.opens;
   $('ohlc-run').click();
   for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
   ok('run still measures the picture', (Array.isArray((win.__ohlcReport || {}).bars) ? win.__ohlcReport.bars.length : 0) >= 250,
     ((win.__ohlcReport || {}).bars || []).length + ' bars');
-  ok('and the store is still untouched after a run', idbLog.opens === 0, 'opens=' + idbLog.opens);
+  ok('but a run by itself writes nothing — only «تأیید» hands it over',
+    idbLog.opens === opensBefore, 'opens ' + opensBefore + ' → ' + idbLog.opens);
   ok('still no page errors', errors.length === 0, errors.join(' | ') || 'none');
 
   /* ---- a page without that key: nothing is intercepted, the tool is still reachable ---- */

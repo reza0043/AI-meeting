@@ -130,9 +130,13 @@ const SEED = {
   'chartdna_saved_patterns': JSON.stringify([
     { id: 'pat-user', name: 'Double top', category: 'reversal' },
     { id: 'img-882827-1t1fl8c', name: 'Image H1 (from image)' },
-    { id: 'img-882827-1t1fl8c-crop', name: 'Image H1 (from image) · کادر برنامه' }
+    { id: 'img-882827-1t1fl8c-crop', name: 'Image H1 (from image) · کادر برنامه' },
+    /* what the window writes today must be clear of this sweep, or confirming would
+       delete its own record on the next load */
+    { id: 'custom_dna_px_pxrec-aa11', name: 'Pixel reconstruction · 296 candles', category: 'Pixel trend' },
+    { id: 'custom_dna_px_pxrec-aa11_trend', name: 'Pixel reconstruction · 296 candles · trend line', category: 'Pixel trend · line' }
   ]),
-  'chartdna_selected_dataset_ids': JSON.stringify(['img-882827-1t1fl8c', 'ds-user-1']),
+  'chartdna_selected_dataset_ids': JSON.stringify(['img-882827-1t1fl8c', 'ds-user-1', 'pxrec-aa11']),
   'chartdna_reference_price': '4453.83',
   'chartdna_ohlc_ref_price': '4453.83',
   'chartdna_ohlc_auto': '1',
@@ -143,7 +147,8 @@ const SEED = {
 };
 const DATASETS = [
   { id: 'ds-user-1', name: 'EURUSD 1h', candles: [1, 2, 3] },
-  { id: 'img-882827-1t1fl8c', name: 'Image H1 (from image)', candles: [1, 2, 3] }
+  { id: 'img-882827-1t1fl8c', name: 'Image H1 (from image)', candles: [1, 2, 3] },
+  { id: 'pxrec-aa11', name: 'Pixel reconstruction · 296 candles', candles: [1, 2, 3] }
 ];
 
 async function load(seed, recs, log) {
@@ -246,12 +251,18 @@ const ok = (name, cond, info) => {
   console.log('2) the leftovers are swept, the user data is not');
   const pats = JSON.parse(win.localStorage.getItem('chartdna_saved_patterns') || '[]');
   ok('our patterns are out of the library, the user\'s stays',
-    pats.length === 1 && pats[0].id === 'pat-user', pats.map((p) => p.name).join(' | '));
+    pats.length === 3 && pats[0].id === 'pat-user', pats.map((p) => p.name).join(' | '));
+  ok('the records a confirmation writes today are left alone by the sweep',
+    pats.some((p) => p.id === 'custom_dna_px_pxrec-aa11') && pats.some((p) => /_trend$/.test(p.id)),
+    pats.map((p) => p.id).join(' | '));
   ok('our dataset is deleted from the app store', log.deleted.length === 1 && log.deleted[0] === 'img-882827-1t1fl8c',
     'deleted: ' + JSON.stringify(log.deleted));
   ok('the user dataset was not touched', log.deleted.indexOf('ds-user-1') < 0);
+  ok('and neither is the freshly measured one', log.deleted.indexOf('pxrec-aa11') < 0,
+    'deleted: ' + JSON.stringify(log.deleted));
   ok('it is dropped from the selection too',
-    win.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1"]', win.localStorage.getItem('chartdna_selected_dataset_ids'));
+    win.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1","pxrec-aa11"]',
+    win.localStorage.getItem('chartdna_selected_dataset_ids'));
   ok('the reference price we set is removed', win.localStorage.getItem('chartdna_reference_price') === null,
     JSON.stringify(win.localStorage.getItem('chartdna_reference_price')));
   const rest = [];

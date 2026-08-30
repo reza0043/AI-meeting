@@ -1282,11 +1282,52 @@
     };
   }
 
+  /* ------------------------------------------------- the trend of a measurement
+     A least-squares straight line over the sequence of measured closes: index -> price.
+     This is what the window draws over its three views and what it hands to the app's
+     engine as the trend reading of a picture. Nothing is invented here: the line is a
+     fit to the closes that were measured, and when there are too few of it says so. */
+  function fitTrend(values) {
+    var v = (values || []).filter(function (x) { return typeof x === 'number' && isFinite(x); });
+    var n = v.length;
+    if (n < 2) return { ok: false, n: n, error: 'at least two closes are needed' };
+    var sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (var i = 0; i < n; i++) { sx += i; sy += v[i]; sxx += i * i; sxy += i * v[i]; }
+    var den = n * sxx - sx * sx;
+    if (!den) return { ok: false, n: n, error: 'degenerate index range' };
+    var slope = (n * sxy - sx * sy) / den, cut = (sy - slope * sx) / n;
+    var mean = sy / n, ssTot = 0, ssRes = 0, line = [];
+    for (var k = 0; k < n; k++) {
+      var at = cut + slope * k;
+      line.push(round(at, 4));
+      ssRes += (v[k] - at) * (v[k] - at); ssTot += (v[k] - mean) * (v[k] - mean);
+    }
+    var both = v.concat(line);
+    var lo = Math.min.apply(null, both), hi = Math.max.apply(null, both);
+    return {
+      ok: true, n: n, model: 'least squares over the measured closes',
+      slope: round(slope, 6), intercept: round(cut, 4),
+      start: round(line[0], 2), end: round(line[n - 1], 2),
+      first: v[0], last: v[n - 1],
+      risePct: line[0] !== 0 ? round((line[n - 1] - line[0]) / Math.abs(line[0]) * 100, 3) : 0,
+      r2: ssTot > 0 ? round(1 - ssRes / ssTot, 4) : 1,
+      direction: slope > 0 ? 'up' : (slope < 0 ? 'down' : 'range'),
+      lo: round(lo, 4), hi: round(hi, 4), values: line, closes: v.map(function (x) { return round(x, 4); })
+    };
+  }
+  /* the inverse of the axis reading: a price back to the pixel row it sits on */
+  function rowForPrice(cal, price) {
+    if (!cal || !cal.detected || !(price > 0) || !isFinite(price)) return null;
+    var row = cal.mode === 'log' ? (Math.log(price) - cal.b) / cal.a : (price - cal.b) / cal.a;
+    return isFinite(row) ? row : null;
+  }
+
   return {
     extract: extract, assignDates: assignDates, toCSV: toCSV, toDataset: toDataset,
+    fitTrend: fitTrend, rowForPrice: rowForPrice,
     renderChart: renderChart, renderReconstructed: renderReconstructed, renderAnnotated: renderAnnotated,
     canvasTemplates: canvasTemplates, parseNumber: parseNumber,
-    components: components, textLines: textLines, version: '1.1.0',
+    components: components, textLines: textLines, version: '1.2.0',
     _readNumber: readNumber, _downsample: downsample, _ncc: ncc,
     _componentsIn: componentsIn, _textLines2: textLines, _gridAlign: gridAlignFraction, _findChrome: findChrome, _fitGrid: fitGrid, _modalBodyWidth: modalBodyWidth
   };
