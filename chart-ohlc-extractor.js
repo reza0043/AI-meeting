@@ -49,8 +49,9 @@
   .ohlc-refrow button{white-space:nowrap;padding:8px 10px;font-size:12px}
   #ohlc-points input{background:#020617;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:6px;font:inherit}
   #ohlc-points button{background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;padding:4px 8px;font-size:11px;cursor:pointer}
-  #ohlc-orig,#ohlc-ann{max-width:100%;border-radius:10px;border:1px solid #334155;display:block;margin-top:8px}
-  #ohlc-chart{width:100%;height:300px;border:1px solid #243244;border-radius:10px;background:#0b1220;display:block;margin-top:8px}
+  /* the three views share one frame: same box, same ratio, same length of the series */
+  #ohlc-chart,#ohlc-orig,#ohlc-ann{width:100%;height:auto;box-sizing:border-box;border:1px solid #334155;
+    border-radius:10px;background:#0b1220;display:block;margin-top:8px}
   #ohlc-status{margin-top:10px;color:#a7f3d0;font-size:12.5px;white-space:pre-wrap;line-height:1.7}
   .ohlc-warn{color:#fbbf24}.ohlc-err{color:#fca5a5}
   .ohlc-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11.5px;font-variant-numeric:tabular-nums}
@@ -89,7 +90,7 @@
           <button class="ohlc-sq" data-view="ann" type="button" aria-selected="false" title="تصویر با مارک‌ها" aria-label="تصویر با مارک‌ها"><span class="ohlc-ico">🎯</span><span class="ohlc-lbl">تصویر با مارک‌ها</span></button>
         </div>
         <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
-        <canvas id="ohlc-chart" width="1000" height="300"></canvas>
+        <canvas id="ohlc-chart"></canvas>
         <canvas id="ohlc-orig" class="ohlc-hidden"></canvas>
         <canvas id="ohlc-ann" class="ohlc-hidden"></canvas>
       </div>
@@ -242,12 +243,29 @@
     im.onerror = () => status('بارگذاری تصویر ناموفق بود (ممکن است blob منقضی شده باشد؛ تصویر را دوباره انتخاب کنید).', 'err');
     im.src = src;
   }
+  /* one box for all three views: the picture itself, capped at 1400 px on the long side
+     (so a phone is not asked to keep three full-resolution buffers), and every view takes
+     exactly that box — the same length and the same height, nothing stretched on its own */
+  function frameBox() {
+    const im = state.img;
+    const iw = (im && (im.naturalWidth || im.width)) || 300, ih = (im && (im.naturalHeight || im.height)) || 150;
+    const s = Math.min(1, 1400 / Math.max(iw, ih, 1));
+    return { w: Math.max(1, Math.round(iw * s)), h: Math.max(1, Math.round(ih * s)) };
+  }
+  function paintInto(cv, src) {
+    const box = frameBox();
+    cv.width = box.w; cv.height = box.h;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, box.w, box.h);
+    if (src) ctx.drawImage(src, 0, 0, box.w, box.h);
+    return box;
+  }
   function drawOriginal() {
-    const cv = $('ohlc-orig'), im = state.img;
+    const im = state.img;
     if (!im) return;
-    const s = Math.min(1, 1400 / Math.max(im.naturalWidth, 1));
-    cv.width = Math.round(im.naturalWidth * s); cv.height = Math.round(im.naturalHeight * s);
-    cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+    paintInto($('ohlc-orig'), im);
+    paintInto($('ohlc-chart'), null);      /* the same frame, empty until the run */
+    paintInto($('ohlc-ann'), null);
     setView('orig');
   }
 
@@ -347,12 +365,11 @@
   }
   modal.querySelectorAll('.ohlc-sq[data-view]').forEach((b) => b.addEventListener('click', () => { setView(b.dataset.view); refitBar(); }));
   function drawResults(res) {
-    const chart = $('ohlc-chart');
-    chart.width = Math.min(1400, Math.max(600, res.bars.length * 4));
-    chart.height = 300;
-    window.ChartDNACV.renderChart(chart, res.bars, { title: res.bars.length + ' candle — reconstructed from pixels' });
-    const cv = document.createElement('canvas');
-    try { window.ChartDNACV.renderAnnotated(cv, state.img, res); $('ohlc-ann').width = cv.width; $('ohlc-ann').height = cv.height; $('ohlc-ann').getContext('2d').drawImage(cv, 0, 0); } catch (e) { console.warn(e); }
+    /* both are measured at the full picture, then placed in the one shared frame */
+    const a = document.createElement('canvas');
+    try { window.ChartDNACV.renderReconstructed(a, state.img, res); paintInto($('ohlc-chart'), a); } catch (e) { console.warn('reconstructed view failed:', e); }
+    const b = document.createElement('canvas');
+    try { window.ChartDNACV.renderAnnotated(b, state.img, res); paintInto($('ohlc-ann'), b); } catch (e) { console.warn(e); }
     setView('chart');
     const rows = res.bars.slice(0, 14).concat(res.bars.length > 16 ? [{ candle: '…' }] : []).concat(res.bars.slice(-4));
     $('ohlc-table').innerHTML = '<table class="ohlc-table"><thead><tr><th>#</th><th>Date</th><th>O</th><th>H</th><th>L</th><th>C</th><th>Dir</th><th>Conf</th><th>note</th></tr></thead><tbody>' +
@@ -438,6 +455,14 @@
     dl(sym || 'chart', 'csv', csv);
   });
   $('ohlc-png').addEventListener('click', () => {
+    if (state.img && state.result) {                 /* the view is capped, the file is not */
+      try {
+        const full = document.createElement('canvas');
+        window.ChartDNACV.renderAnnotated(full, state.img, state.result);
+        full.toBlob((b) => dlBlob('annotated', 'png', b), 'image/png');
+        return;
+      } catch (e) { console.warn(e); }
+    }
     const cv = $('ohlc-ann');
     if (cv.width) cv.toBlob((b) => dlBlob('annotated', 'png', b), 'image/png');
   });
@@ -503,7 +528,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 10,
+    version: 11,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,

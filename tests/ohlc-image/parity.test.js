@@ -137,6 +137,28 @@ const srcCanvas = createCanvas(meta.width, meta.height);   /* stand-in for the <
 let ann = createCanvas(10, 10), drew = 0;
 try { cv.renderAnnotated(ann, srcCanvas, r); drew = ann.width * ann.height; } catch (e) { console.log('   renderAnnotated threw: ' + e.message); }
 ok('renderAnnotated sizes itself to the source and paints marks', drew === meta.width * meta.height, drew + ' px canvas');
+let rec = createCanvas(10, 10), drew2 = 0, cols = null;
+try {
+  cv.renderReconstructed(rec, srcCanvas, r); drew2 = rec.width * rec.height;
+  const dd = rec.getContext('2d').getImageData(0, 0, rec.width, rec.height).data;
+  let lo = 1e9, hi = -1, n = 0;
+  for (let x = 0; x < rec.width; x++) {
+    let f = false;
+    for (let y = 0; y < rec.height && !f; y += 2) {
+      const i = (y * rec.width + x) * 4;
+      if (Math.abs(dd[i] - 11) + Math.abs(dd[i + 1] - 18) + Math.abs(dd[i + 2] - 32) > 40) { f = true; n++; }
+    }
+    if (f) { if (x < lo) lo = x; if (x > hi) hi = x; }
+  }
+  cols = { lo, hi, n };
+} catch (e) { console.log('   renderReconstructed threw: ' + e.message); }
+ok('renderReconstructed takes the very same frame as renderAnnotated',
+  drew2 === drew && rec.width === ann.width && rec.height === ann.height, rec.width + '\u00d7' + rec.height);
+const span = 2 * (r.geometry.pitch || 6) + 2;   /* the mask box is a little wider than the outermost bodies */
+ok('and paints the candles at the columns they were measured in',
+  !!cols && cols.n > 200 && cols.lo >= r.geometry.dataX0 - 2 && cols.lo <= r.geometry.dataX0 + span &&
+  cols.hi <= r.geometry.dataX1 + 2 && cols.hi >= r.geometry.dataX1 - span,
+  cols ? 'painted ' + cols.lo + '\u2026' + cols.hi + ' \u00b7 mask box ' + Math.round(r.geometry.dataX0) + '\u2026' + Math.round(r.geometry.dataX1) + ' \u00b7 pitch ' + r.geometry.pitch.toFixed(2) : 'nothing painted');
 
 console.log('9) dataset handed to Chart DNA');
 const ds = cv.toDataset(r, { symbol: 'XAUUSD', timeframe: '60' });

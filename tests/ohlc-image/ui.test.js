@@ -345,6 +345,65 @@ const ok = (name, cond, info) => {
   ok('preview table rendered', ($('ohlc-table').querySelectorAll('tbody tr') || []).length > 0, $('ohlc-table').querySelectorAll('tbody tr').length + ' rows');
   ok('reconstruction canvas painted', $('ohlc-chart').width > 300 && $('ohlc-chart').height > 100, $('ohlc-chart').width + 'x' + $('ohlc-chart').height);
   ok('annotated overlay drawn without error', !/خطا در رسم/.test(st) && $('ohlc-ann').width > 0, 'canvas ' + $('ohlc-ann').width + 'x' + $('ohlc-ann').height);
+
+  /* ---- one frame for the three views ---- */
+  const viewC = $('ohlc-chart'), viewO = $('ohlc-orig'), viewA = $('ohlc-ann');
+  ok('the three views are one box: same width, same height, same length of the series',
+    viewC.width === viewO.width && viewO.width === viewA.width &&
+    viewC.height === viewO.height && viewO.height === viewA.height,
+    [viewC, viewO, viewA].map((c) => c.width + '×' + c.height).join(' · '));
+  const im = win.ChartDnaOhlc.image(), res = win.ChartDnaOhlc.result();
+  ok('that box is the screenshot itself, only capped at 1400 px on the long side',
+    Math.max(viewC.width, viewC.height) <= 1400 && viewC.width >= 1000 &&
+    Math.abs(viewC.width / viewC.height - im.naturalWidth / im.naturalHeight) < 0.01,
+    viewC.width + '×' + viewC.height + ' for a ' + im.naturalWidth + '×' + im.naturalHeight + ' picture');
+  const css = Array.prototype.slice.call(win.document.querySelectorAll('style')).map((e) => e.textContent).join('\n');
+  ok('and it is one shared rule, not three sizes of its own',
+    /#ohlc-chart,\s*#ohlc-orig,\s*#ohlc-ann\s*\{[^}]*width:100%;height:auto/.test(css) &&
+    !/#ohlc-chart\s*\{[^}]*height:300px/.test(css), 'one rule · height:auto · no fixed 300px box');
+  const sc = viewC.width / im.naturalWidth;
+  const scan = (cv, hit) => {
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let lo = 1e9, hi = -1, n = 0;
+    for (let x = 0; x < cv.width; x++) {
+      let found = false;
+      for (let y = 0; y < cv.height && !found; y += 2) {
+        const i = (y * cv.width + x) * 4;
+        if (hit(d[i], d[i + 1], d[i + 2])) { found = true; n++; }
+      }
+      if (found) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    }
+    return { lo, hi, n };
+  };
+  const onDark = (r, g, b) => Math.abs(r - 11) + Math.abs(g - 18) + Math.abs(b - 32) > 40;
+  const painted = scan(viewC, onDark);
+  const geo = res.geometry;
+  const span = 2 * (geo.pitch || 6) * sc + 2;   /* the mask box is a hair wider than the outermost bodies */
+  ok('the reconstructed candles stand at the columns they were measured in',
+    painted.n > 200 && painted.lo >= geo.dataX0 * sc - 2 && painted.lo <= geo.dataX0 * sc + span &&
+    painted.hi <= geo.dataX1 * sc + 2 && painted.hi >= geo.dataX1 * sc - span,
+    'painted ' + painted.lo + '…' + painted.hi + ' · mask box ' + Math.round(geo.dataX0 * sc) + '…' + Math.round(geo.dataX1 * sc) +
+    ' at ' + sc.toFixed(3) + ' · ' + res.bars.length + ' candles');
+  /* the same pixel, seen through the two views: where the reconstructed view draws a
+     wick, the marked view must have laid a mark over the untouched screenshot */
+  const dA = viewA.getContext('2d').getImageData(0, 0, viewA.width, viewA.height).data;
+  const dO = viewO.getContext('2d').getImageData(0, 0, viewO.width, viewO.height).data;
+  let at = 0, tot = 0;
+  res.bars.forEach((b) => {
+    if (b.status !== 'ok' || b.confidence < 0.9) return;
+    tot++;
+    const x = Math.round(b.x * sc), y = Math.round((b.rowHigh + b.rowBodyTop) / 2 * sc);
+    let hit = false;
+    for (let dx = -2; dx <= 2 && !hit; dx++) {
+      for (let dy = -2; dy <= 2 && !hit; dy++) {
+        const i = ((y + dy) * viewA.width + (x + dx)) * 4, j = ((y + dy) * viewO.width + (x + dx)) * 4;
+        if (Math.abs(dA[i] - dO[j]) + Math.abs(dA[i + 1] - dO[j + 1]) + Math.abs(dA[i + 2] - dO[j + 2]) > 90) hit = true;
+      }
+    }
+    if (hit) at++;
+  });
+  ok('and the marked view lays its mark on the very candle the reconstructed view draws',
+    tot > 200 && at / tot > 0.95, at + '/' + tot + ' bars carry a mark at the same pixel');
   $('ohlc-drop').dispatchEvent(new win.Event('dragover', { bubbles: true }));
   ok('the upload key highlights on dragover', /ohlc-over/.test($('ohlc-drop').className), $('ohlc-drop').className);
 

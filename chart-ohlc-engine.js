@@ -1189,6 +1189,30 @@
     if (opts.title) { ctx.fillStyle = '#94a3b8'; ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(opts.title, W / 2, H - 3); }
   }
 
+  /* the reconstructed candles in the pixel space of the very same picture: the bars
+     land at the measured x and rows, so this view can be laid over the original or
+     over the marked one candle for candle. No auto-fit, no rescaling of the series. */
+  function renderReconstructed(canvas, src, result) {
+    var iw = src.naturalWidth || src.width, ih = src.naturalHeight || src.height;
+    canvas.width = iw; canvas.height = ih;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, iw, ih);
+    if (!result || !result.geometry) return;
+    if (result.scale && result.scale !== 1) { /* measured at this scale: map back up */
+      ctx.setTransform(1 / result.scale, 0, 0, 1 / result.scale, 0, 0);
+    }
+    var g = result.geometry, step = g.pitch || 1;
+    ctx.lineWidth = Math.max(1, iw / 1000);
+    result.bars.forEach(function (b) {
+      if (b.status !== 'ok') { ctx.strokeStyle = '#ff4d4d'; ctx.strokeRect(b.x - step / 2, g.paneTop, step, 26); return; }
+      var up = b.direction === 'Bullish';
+      ctx.strokeStyle = ctx.fillStyle = up ? '#26a69a' : '#ef5350';
+      ctx.beginPath(); ctx.moveTo(b.x, b.rowHigh); ctx.lineTo(b.x, b.rowLow); ctx.stroke();
+      ctx.fillRect(b.x - step * 0.37, b.rowBodyTop, Math.max(1, step * 0.74), Math.max(1, b.rowBodyBot - b.rowBodyTop));
+      if (b.confidence < 0.9) { ctx.fillStyle = '#f59e0b'; ctx.fillRect(b.x - 1, Math.max(0, b.rowHigh - 7), 2, 3); }
+    });
+  }
+
   function renderAnnotated(canvas, src, result) {
     var ctx = canvas.getContext('2d');
     var iw = src.naturalWidth || src.width, ih = src.naturalHeight || src.height;
@@ -1260,9 +1284,9 @@
 
   return {
     extract: extract, assignDates: assignDates, toCSV: toCSV, toDataset: toDataset,
-    renderChart: renderChart, renderAnnotated: renderAnnotated,
+    renderChart: renderChart, renderReconstructed: renderReconstructed, renderAnnotated: renderAnnotated,
     canvasTemplates: canvasTemplates, parseNumber: parseNumber,
-    components: components, textLines: textLines, version: '1.0.0',
+    components: components, textLines: textLines, version: '1.1.0',
     _readNumber: readNumber, _downsample: downsample, _ncc: ncc,
     _componentsIn: componentsIn, _textLines2: textLines, _gridAlign: gridAlignFraction, _findChrome: findChrome, _fitGrid: fitGrid, _modalBodyWidth: modalBodyWidth
   };
