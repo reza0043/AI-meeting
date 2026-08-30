@@ -5,6 +5,8 @@
  *   - hides the app's own «رسم چارت و سطوح تحلیل الگو» panel and nothing else,
  *   - sweeps the data our old autopilot wrote (dataset, pattern, reference
  *     price, options) without touching the user's own entries,
+ *   - and deletes the upload block in the middle of «محیط الگو» together with
+ *     the file input it opens, leaving the crop canvas and the card header alone.
  *   - runs the sweep once, respects its switch, and the app's scripts no longer
  *     load the autopilot at all.
  *
@@ -25,7 +27,29 @@ const PAGE = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-
 <script src="chart-ohlc-engine.js"></script><script src="chart-ohlc-extractor.js"></script><script src="chart-dna-ui-trim.js"></script>
 </head><body><div id="root"><div id="chart-dna-app" dir="rtl">
   <header><button id="btn-header-settings">تنظیمات</button><span>CHART DNA</span></header>
-  <div id="image-cropper-card" class="border rounded-2xl p-3"><h2>محیط الگو</h2><canvas id="app-canvas"></canvas></div>
+  <div id="image-cropper-card" class="border rounded-2xl p-3 flex flex-col gap-2.5 overflow-hidden">
+    <div id="crop-head" class="flex flex-wrap items-center justify-between gap-1.5">
+      <div class="flex items-center gap-1.5"><svg></svg><h2 class="text-xs font-bold">محیط الگو</h2><span>296 pts</span></div>
+      <div class="flex items-center gap-1.5">
+        <span class="text-[10px] text-slate-400">قیمت مرجع:</span><span>تعیین نشده</span>
+        <button id="btn-ref" title="تنظیم دستی قیمت مرجع برای تمام تحلیل‌ها">تنظیم</button>
+        <input id="crop-file" type="file" accept="image/*" class="hidden">
+      </div>
+    </div>
+    <div id="crop-stage" class="relative flex-1 border rounded-xl overflow-hidden flex items-center justify-center min-h-0">
+      <div id="crop-empty" class="flex flex-col items-center justify-center gap-2 text-center p-4 cursor-pointer transition-colors w-full h-full">
+        <div class="w-11 h-11 rounded-2xl border flex items-center justify-center"><svg></svg></div>
+        <div>
+          <p class="text-xs font-semibold">تصویر چارت را بکشید و اینجا رها کنید</p>
+          <p class="text-[11px] mt-0.5">کادر زرد رنگ را روی بخش مورد نظر از نمودار تنظیم کنید</p>
+        </div>
+      </div>
+      <div id="crop-view" class="w-full h-full flex items-center justify-center p-2 overflow-auto" style="display:none">
+        <canvas id="app-canvas" width="400" height="200"></canvas>
+      </div>
+    </div>
+    <div id="crop-status" class="text-xs font-mono px-3 py-1.5 border rounded-lg flex items-center gap-2"><span class="w-2 h-2 rounded-full animate-pulse"></span><span>آماده</span></div>
+  </div>
   <div data-panel="overlay" id="pattern-overlay-canvas-card" class="bg-slate-900/80 border rounded-2xl p-4">
     <div class="flex items-center justify-between"><svg></svg><span>${OVERLAY_TITLE}</span></div>
     <canvas id="overlay-canvas" width="400" height="220"></canvas>
@@ -40,7 +64,18 @@ const PAGE = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-
   </div>
   <div id="ohlc-auto-card" class="rounded-2xl p-4">کارتِ قدیمیِ افزونه</div>
   <div id="ohlc-tool" class="ohlc-pinned" style="top:60px;left:796px"><button id="ohlc-open">📈 استخراج OHLC از تصویر</button></div>
-</div></div></body></html>`;
+</div></div>
+<script>
+/* the card's own behaviour, exactly as the bundle wires it: the centred block is the
+   upload control (its click opens the hidden file input), the canvas takes the crop box */
+window.__browse = 0; window.__inputClicks = 0; window.__drops = 0; window.__canvasClicks = 0;
+var empty = document.getElementById('crop-empty'), inp = document.getElementById('crop-file');
+empty.addEventListener('click', function () { window.__browse++; inp.click(); });
+inp.addEventListener('click', function () { window.__inputClicks++; });
+document.getElementById('crop-stage').addEventListener('drop', function (e) { window.__drops++; e.preventDefault(); });
+document.getElementById('app-canvas').addEventListener('click', function () { window.__canvasClicks++; });
+</script>
+</body></html>`;
 
 const server = http.createServer((req, res) => {
   const u = req.url.split('?')[0];
@@ -224,6 +259,81 @@ const ok = (name, cond, info) => {
     doc3.querySelector('[data-panel="overlay"]').style.display !== 'none' && doc3.querySelector('[data-panel="stats"]').style.display !== 'none' &&
     !!doc3.getElementById('ohlc-auto-card') && log3.deleted.length === 0,
     'panels visible, card kept, store untouched');
+
+  /* --------------------------------- 3b) the upload prompt in the middle of «محیط الگو» */
+  console.log('3b) the upload key and the centred texts of «محیط الگو» are gone, with their function');
+  const empty = doc.getElementById('crop-empty');
+  const inp = doc.getElementById('crop-file');
+  const ps = empty.querySelectorAll('p');
+  ok('the block in the centre is hidden', empty.style.display === 'none' && empty.hasAttribute('hidden'),
+    'display=' + empty.style.display + ', hidden=' + empty.hasAttribute('hidden'));
+  ok('so both of its sentences are off the screen',
+    empty.contains(ps[0]) && empty.contains(ps[1]) && win.getComputedStyle(empty).display === 'none' &&
+    /بکشید/.test(ps[0].textContent) && /کادر زرد/.test(ps[1].textContent),
+    Array.prototype.map.call(ps, (x) => x.textContent).join(' / ').slice(0, 60));
+  ok('and its icon box went with them', empty.querySelector('svg') && empty.querySelector('div').style.display !== 'flex',
+    'icon still inside the hidden block');
+  ok('the crop surface is left alone', doc.getElementById('crop-view').style.display === 'none' &&
+    !doc.getElementById('crop-view').hasAttribute('hidden') && doc.getElementById('app-canvas').style.display !== 'none',
+    'canvas kept, its wrapper untouched');
+  ok('the card header, the reference-price control and the status strip are untouched',
+    doc.getElementById('crop-head').style.display !== 'none' && doc.getElementById('btn-ref').style.display !== 'none' &&
+    doc.getElementById('crop-status').style.display !== 'none' && doc.getElementById('crop-stage').style.display !== 'none',
+    'head, btn-ref, status, stage visible');
+  ok('the card itself is still there', doc.getElementById('image-cropper-card').style.display !== 'none');
+  ok('the file input of the card is disabled', inp.disabled === true && inp.getAttribute('data-dna-off') === '1',
+    'disabled=' + inp.disabled);
+  empty.dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(120);
+  ok('pressing that block opens nothing — the app handler never sees it',
+    win.__browse === 0 && win.__inputClicks === 0, 'browse=' + win.__browse + ', input clicks=' + win.__inputClicks);
+  inp.click();
+  await sleep(40);
+  ok('even a direct click() on the input is a no-op', win.__inputClicks === 0, 'input clicks=' + win.__inputClicks);
+  doc.getElementById('crop-stage').dispatchEvent(new win.Event('drop', { bubbles: true }));
+  await sleep(40);
+  ok('a file dropped where the prompt was is ignored', win.__drops === 0, 'drops=' + win.__drops);
+  doc.getElementById('app-canvas').dispatchEvent(new win.Event('drop', { bubbles: true }));
+  doc.getElementById('app-canvas').dispatchEvent(new win.Event('click', { bubbles: true }));
+  await sleep(40);
+  ok('but we swallow nothing over the crop surface itself', win.__drops === 1 && win.__canvasClicks === 1,
+    'drops=' + win.__drops + ', canvas clicks=' + win.__canvasClicks);
+  ok('and the tool reports what it took', win.ChartDnaUiTrim.cropNodes().indexOf(empty) >= 0,
+    'cropNodes=' + win.ChartDnaUiTrim.cropNodes().length);
+
+  /* the app re-renders the card: the block comes back, we hide it again */
+  empty.removeAttribute('hidden'); empty.removeAttribute('aria-hidden'); empty.removeAttribute('data-dna-crop');
+  empty.style.display = ''; delete empty.__dnaTrimmed;
+  await sleep(900);                                          /* the periodic pass, not only the observer */
+  ok('a rebuilt prompt is hidden again, no fight over it',
+    empty.style.display === 'none' && empty.hasAttribute('data-dna-crop') && win.ChartDnaUiTrim.cropNodes().length === 1,
+    'display=' + empty.style.display + ', cropNodes=' + win.ChartDnaUiTrim.cropNodes().length);
+
+  /* the switch gives the whole thing back */
+  win.ChartDnaUiTrim.cropOff();
+  await sleep(700);
+  const inp2 = doc.getElementById('crop-file');
+  ok('with chartdna_crop_upload=0 the prompt and the input work again',
+    empty.style.display === '' && !empty.hasAttribute('hidden') && inp2.disabled === false,
+    'display=' + JSON.stringify(empty.style.display) + ', disabled=' + inp2.disabled);
+  inp2.click();
+  ok('and its file dialog is the app’s own again', win.__inputClicks === 1, 'input clicks=' + win.__inputClicks);
+  ok('a drop is the app’s business again', (doc.getElementById('crop-stage').dispatchEvent(new win.Event('drop', { bubbles: true })), win.__drops === 2),
+    'drops=' + win.__drops);
+  win.ChartDnaUiTrim.cropOn();
+  await sleep(200);
+  ok('and one call takes it back off', empty.style.display === 'none' && doc.getElementById('crop-file').disabled === true,
+    'display=' + empty.style.display + ', disabled=' + doc.getElementById('crop-file').disabled);
+
+  /* a page that switches this script off must not lose the card's prompt either */
+  const log4 = { deleted: [] };
+  const dom4 = await load({ 'chartdna_ui_trim': '0' }, DATASETS, log4);
+  await sleep(600);
+  ok('with the whole trim off, the crop card is exactly as the app built it',
+    dom4.window.document.getElementById('crop-empty').style.display !== 'none' &&
+    dom4.window.document.getElementById('crop-file').disabled === false,
+    'display=' + JSON.stringify(dom4.window.document.getElementById('crop-empty').style.display));
+  try { dom4.window.close(); } catch (e) { }
 
   /* ------------------------------------------------------ 4) the app does not load us */
   console.log('4) the autopilot is gone from the build');
