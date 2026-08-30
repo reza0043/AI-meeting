@@ -26,13 +26,17 @@ const PAGE = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-
 </head><body><div id="root"><div id="chart-dna-app" dir="rtl">
   <header><button id="btn-header-settings">تنظیمات</button><span>CHART DNA</span></header>
   <div id="image-cropper-card" class="border rounded-2xl p-3"><h2>محیط الگو</h2><canvas id="app-canvas"></canvas></div>
-  <div data-panel="overlay" class="bg-slate-900/80 border rounded-2xl p-4">
+  <div data-panel="overlay" id="pattern-overlay-canvas-card" class="bg-slate-900/80 border rounded-2xl p-4">
     <div class="flex items-center justify-between"><svg></svg><span>${OVERLAY_TITLE}</span></div>
     <canvas id="overlay-canvas" width="400" height="220"></canvas>
     <button id="btn-support">حمایت (کف)</button><button id="btn-resistance">مقاومت (سقف)</button>
   </div>
-  <div data-panel="stats" class="bg-slate-900/80 border rounded-2xl p-4">
-    <span>${STATS_TITLE}</span><p>آماري برای نمایش وجود ندارد</p>
+  <div data-panel="stats" id="pattern-stats-cards-card" class="bg-slate-900/80 border rounded-2xl p-2.5">
+    <div class="flex items-center justify-between"><svg></svg><span>${STATS_TITLE}</span></div>
+    <p>آماري برای نمایش وجود ندارد</p><div class="rounded-lg">H: 4454.93</div>
+  </div>
+  <div data-panel="trend" class="bg-slate-900/80 border rounded-2xl p-4">
+    <span>خلاصه روند</span><p>صعودی</p>
   </div>
   <div id="ohlc-auto-card" class="rounded-2xl p-4">کارتِ قدیمیِ افزونه</div>
 </div></div></body></html>`;
@@ -128,7 +132,7 @@ const ok = (name, cond, info) => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
 
   /* ---------------------------------------------- 1) the two windows go away */
-  console.log('1) both windows are removed from the page');
+  console.log('1) the three windows are removed from the page');
   const log = { deleted: [] };
   const dom = await load(Object.assign({}, SEED), DATASETS, log);
   const win = dom.window, doc = win.document;
@@ -142,12 +146,18 @@ const ok = (name, cond, info) => {
   ok('its canvas and level buttons are inside the node that got hidden',
     overlay.contains(doc.getElementById('overlay-canvas')) && overlay.querySelectorAll('button').length === 2,
     overlay.querySelectorAll('canvas').length + ' canvas, ' + overlay.querySelectorAll('button').length + ' buttons');
-  ok('the neighbouring panel is untouched', stats.style.display !== 'none' && !stats.hasAttribute('hidden'), 'visible as before');
+  ok('the stats/targets card is hidden too, by its own id',
+    stats.style.display === 'none' && stats.hasAttribute('hidden'), 'display=' + stats.style.display);
+  ok('a panel nobody asked about is untouched',
+    doc.querySelector('[data-panel="trend"]').style.display !== 'none' && !doc.querySelector('[data-panel="trend"]').hasAttribute('hidden'),
+    'خلاصه روند visible as before');
   ok('the app header is untouched', doc.getElementById('btn-header-settings').style.display !== 'none');
+  ok('the app root is never hidden', doc.getElementById('chart-dna-app').style.display !== 'none', 'chart-dna-app visible');
   ok('the manual extraction button stays (the user asked for it)', !!doc.getElementById('ohlc-open'),
     JSON.stringify((doc.getElementById('ohlc-open') || {}).textContent || ''));
   ok('nothing threw on the page', errors.length === 0, errors.join(' | ') || 'none');
-  ok('the trim hook is published for tests', win.ChartDnaUiTrim && win.ChartDnaUiTrim.hidden() === 1, 'v' + (win.ChartDnaUiTrim || {}).version);
+  ok('the trim hook is published for tests', win.ChartDnaUiTrim && win.ChartDnaUiTrim.hidden() === 2 && win.ChartDnaUiTrim.ids.length === 2,
+    'v' + (win.ChartDnaUiTrim || {}).version + ' hiding ' + (win.ChartDnaUiTrim || {}).hidden());
 
   /* a re-render that recreates the panel must be hidden again */
   const parent = overlay.parentElement;
@@ -159,8 +169,8 @@ const ok = (name, cond, info) => {
   await sleep(700);
   await sleep(900);                                          /* the slow sweep, not only the mutation */
   const fresh = clone.querySelector('canvas').parentElement;
-  ok('a panel the app renders later is hidden too', fresh.style.display === 'none' && win.ChartDnaUiTrim.hidden() === 2,
-    'hidden=' + win.ChartDnaUiTrim.hidden());
+  ok('a panel the app renders later is hidden too (no id, matched by title)',
+    fresh.style.display === 'none' && win.ChartDnaUiTrim.hidden() === 3, 'hidden=' + win.ChartDnaUiTrim.hidden());
 
   /* ------------------------------------------------- 2) the data it left behind */
   console.log('2) the leftovers are swept, the user data is not');
@@ -192,16 +202,17 @@ const ok = (name, cond, info) => {
   const doc2 = dom2.window.document;
   ok('the sweep is skipped when it already ran', log2.deleted.length === 0, JSON.stringify(log2.deleted));
   ok('but the panels are still trimmed',
-    !doc2.getElementById('ohlc-auto-card') && doc2.querySelector('[data-panel="overlay"]').style.display === 'none',
-    'card gone, overlay hidden');
+    !doc2.getElementById('ohlc-auto-card') && doc2.querySelector('[data-panel="overlay"]').style.display === 'none' &&
+    doc2.querySelector('[data-panel="stats"]').style.display === 'none', 'card gone, both panels hidden');
 
   const log3 = { deleted: [] };
   const dom3 = await load({ 'chartdna_ui_trim': '0' }, DATASETS, log3);
   await sleep(700);
   const doc3 = dom3.window.document;
   ok('one switch turns the whole script off',
-    doc3.querySelector('[data-panel="overlay"]').style.display !== 'none' && !!doc3.getElementById('ohlc-auto-card') && log3.deleted.length === 0,
-    'overlay visible, card kept, store untouched');
+    doc3.querySelector('[data-panel="overlay"]').style.display !== 'none' && doc3.querySelector('[data-panel="stats"]').style.display !== 'none' &&
+    !!doc3.getElementById('ohlc-auto-card') && log3.deleted.length === 0,
+    'panels visible, card kept, store untouched');
 
   /* ------------------------------------------------------ 4) the app does not load us */
   console.log('4) the autopilot is gone from the build');
@@ -216,7 +227,8 @@ const ok = (name, cond, info) => {
   const tags = (html.match(/chart-(?:ohlc|dna)-[\w-]+\.js\?v=(\d+)/g) || []).map((s) => s.slice(-2)).concat(
     (sw.match(/chart-(?:ohlc|dna)-[\w-]+\.js\?v=(\d+)/g) || []).map((s) => s.slice(-2)));
   ok('page and worker agree on one build tag', new Set(tags).size === 1 && tags.length === 6, 'v=' + tags.join(','));
-  ok('the worker version says what was removed', /VERSION = "chartdna-v2\.10\.0-remove-ohlc-card-and-overlay"/.test(sw),
+  ok('the worker version is bumped with the build tag',
+    /VERSION = "chartdna-v2\.11\.0-remove-pattern-panels"/.test(sw) && /chartdna-v2\.[0-9]+\.[0-9]+-[a-z0-9-]+/.test(sw),
     (sw.match(/VERSION = "([^"]+)"/) || [])[1]);
 
   server.close();

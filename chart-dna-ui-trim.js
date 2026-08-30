@@ -1,6 +1,6 @@
 /* Chart DNA — UI trim
  * ---------------------------------------------------------------------------
- * Removes two windows from the app, together with everything that fed them:
+ * Removes three windows from the app, together with everything that fed them:
  *
  *   1. «کندل‌های بازسازی‌شده از همین تصویر (OHLC از پیکسل)» — the card that
  *      chart-ohlc-autopilot.js used to inject under the app's image panel.  The
@@ -9,9 +9,11 @@
  *      it wrote (dataset, pattern, reference price, options).
  *   2. «رسم چارت و سطوح تحلیل الگو» / "Pattern Chart Overlay" — the app's own
  *      overlay panel (canvas, support & resistance lines, targets, price chip).
- *      It is rendered by the minified bundle with no source in this repo, so it
- *      is hidden in place instead of being ripped out of React's tree: hiding is
- *      safe, removing a node React owns is not.
+ *   3. «کارت‌های آماری تحلیل الگو» / "Pattern Stats & Targets" — the stat cards
+ *      that hung under it (peaks, entry/target/stop levels).
+ *   Panels 2 and 3 live in the minified bundle with no source in this repo, so
+ *   they are hidden in place instead of being ripped out of React's tree: hiding
+ *   is safe, removing a node React owns is not.
  *
  * Nothing here touches the manual extraction tool (the button at the top of the
  * page and its panel); that stays available.
@@ -22,9 +24,11 @@
 (() => {
   const OFF = 'chartdna_ui_trim';
   const SWEPT = 'chartdna_ui_trim_swept';
+  /* the app's own stable ids win; the titles only back them up for other builds */
+  const IDS = ['pattern-overlay-canvas-card', 'pattern-stats-cards-card'];
   const TITLES = [
-    'رسم چارت و سطوح تحلیل الگو',
-    'Pattern Chart Overlay'
+    'رسم چارت و سطوح تحلیل الگو', 'Pattern Chart Overlay',
+    'کارت‌های آماری تحلیل الگو', 'Pattern Stats & Targets'
   ];
   const CARD = 'ohlc-auto-card';
   const OUR_KEYS = /^chartdna_ohlc_/;
@@ -43,7 +47,7 @@
     return n;
   }
 
-  /* ------------------------------------------------------- the app's own overlay panel */
+  /* -------------------------------------------------- the app's own pattern panels */
   /* only the element whose OWN text is the title counts — every ancestor of the
      heading also "contains" that string, and matching them would hide the page */
   function ownText(el) {
@@ -66,8 +70,8 @@
     if (el.id === 'chart-dna-app' || el.id === 'root') return true;
     try { return !!el.querySelector('#image-cropper-card') || !!el.querySelector('#btn-header-settings'); } catch (e) { return false; }
   }
-  /* climb from the title to the panel that owns it: the closest ancestor that also
-     holds the overlay canvas (or, failing that, the closest rounded card) */
+  /* climb from a title to the card that owns it: the closest ancestor holding the
+     panel's canvas, else the closest rounded card */
   function panelOf(title) {
     let node = title, canvasAbove = null, card = null;
     for (let i = 0; node && i < 8; i++) {
@@ -88,18 +92,25 @@
     }
     return keep;
   }
-  let lastScan = 0;
-  function hideOverlays(force) {
-    if (!on()) return panels.length;
-    /* a full DOM scan on every mutation would be wasteful: only look again when we
-       have hidden nothing yet, when a panel came back, or once a second at most */
-    const kept = stillHidden();
-    if (panels.length && kept.length === panels.length && !force && Date.now() - lastScan < 800) return panels.length;
-    panels.length = 0;
-    for (let i = 0; i < kept.length; i++) panels.push(kept[i]);
-    return scanTitles();
+  function hide(el, why) {
+    if (!el || el.__dnaTrimmed) return false;
+    el.__dnaTrimmed = true;
+    el.setAttribute('hidden', '');
+    el.style.display = 'none';
+    panels.push(el);
+    log('hidden panel by ' + why + (el.id ? ': #' + el.id : ''));
+    return true;
   }
-  function scanTitles() {
+  function hideById() {
+    let n = 0;
+    for (let i = 0; i < IDS.length; i++) {
+      const el = document.getElementById(IDS[i]);
+      if (el && hide(el, 'id')) n++;
+    }
+    return n;
+  }
+  let lastScan = 0;
+  function hideByTitle() {
     lastScan = Date.now();
     const nodes = document.querySelectorAll('h1,h2,h3,h4,h5,span,div');
     for (let i = 0; i < nodes.length; i++) {
@@ -108,13 +119,20 @@
       el.__dnaTrimmed = true;
       const panel = panelOf(el);
       if (!panel || tooBig(panel)) { log('title found but no safe panel around it'); continue; }
-      panel.__dnaTrimmed = true;
-      panel.setAttribute('hidden', '');
-      panel.style.display = 'none';
-      panels.push(panel);
-      log('hidden panel:', TITLES[0]);
+      hide(panel, 'title');
     }
     return panels.length;
+  }
+  function hideOverlays(force) {
+    if (!on()) return panels.length;
+    /* if a panel we hid came back (React rebuilt it), forget it and look again */
+    const kept = stillHidden();
+    const lost = kept.length !== panels.length;
+    panels.length = 0;
+    for (let i = 0; i < kept.length; i++) panels.push(kept[i]);
+    const found = hideById();                           /* ids: cheap, always worth a look */
+    if (!force && !lost && !found && Date.now() - lastScan < 2000) return panels.length;
+    return hideByTitle();
   }
 
   /* --------------------------------------------------------------- the data sweep */
@@ -232,7 +250,7 @@
   function run() {
     if (!on()) { log('switched off by ' + OFF); return; }
     dropOwnCard();
-    hideOverlays();
+    hideOverlays(true);
     sweep();
     /* the app mounts after us and re-renders, so keep watching; our own writes
        are attribute/childList-free for the observer so this cannot loop */
@@ -246,14 +264,16 @@
       const mo = new MutationObserver(again);
       mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch (e) { }
+    /* the app mounts after us and may rebuild these panels later */
     const settle = setInterval(() => { dropOwnCard(); hideOverlays(true); }, 600);
-    setTimeout(() => clearInterval(settle), 20000);        /* the panel never appears later than the first render */
+    setTimeout(() => clearInterval(settle), 20000);
   }
   if (document.body) run(); else document.addEventListener('DOMContentLoaded', run);
 
   window.ChartDnaUiTrim = {
-    version: 1,
+    version: 2,
     titles: TITLES.slice(),
+    ids: IDS.slice(),
     hide: hideOverlays,
     dropCard: dropOwnCard,
     sweep: () => sweep(true),
