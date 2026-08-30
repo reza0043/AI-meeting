@@ -31,6 +31,9 @@
     'کارت‌های آماری تحلیل الگو', 'Pattern Stats & Targets'
   ];
   const CARD = 'ohlc-auto-card';
+  const STALE = ['ohlc-auto-card', 'ohlc-tool', 'ohlc-open'];   /* leftovers of old builds */
+  const MAX_DROPS = 5;                    /* an old build re-adds what we take away: bounded */
+  const drops = Object.create(null);
   const OUR_KEYS = /^chartdna_ohlc_/;
   const OUR_NAME = /from image|کادر برنامه|از تصویر/i;
 
@@ -39,11 +42,18 @@
 
   /* ------------------------------------------------------------ the card we used to inject */
   function dropOwnCard() {
-    let n = 0, el;
-    while ((el = document.getElementById(CARD)) || document.querySelector('#' + CARD)) {
-      if (el && el.parentElement) el.parentElement.removeChild(el); else break;
-      if (++n > 4) break;                                   /* never loop on a stubborn node */
+    let n = 0;
+    for (let i = 0; i < STALE.length; i++) {
+      const id = STALE[i];
+      if ((drops[id] || 0) >= MAX_DROPS) continue;          /* stop fighting a cached script */
+      const el = document.getElementById(id);
+      if (el && el.parentElement) {
+        el.parentElement.removeChild(el);
+        drops[id] = (drops[id] || 0) + 1;
+        n++;                                                 /* the floating opener went with the pin */
+      }
     }
+    if (n) log('removed', n, 'leftover node(s)');
     return n;
   }
 
@@ -276,6 +286,7 @@
     ids: IDS.slice(),
     hide: hideOverlays,
     dropCard: dropOwnCard,
+    drops: () => drops,
     sweep: () => sweep(true),
     hidden: () => panels.length,
     off: () => { try { localStorage.setItem(OFF, '0'); } catch (e) { } }

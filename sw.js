@@ -1,12 +1,12 @@
 /* Chart DNA — Service Worker */
-const VERSION = "chartdna-v2.11.0-remove-pattern-panels";
+const VERSION = "chartdna-v2.12.0-extract-on-image-pick";
 const CACHE_NAME = `${VERSION}`;
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "chart-ohlc-extractor.js?v=11",
-  "chart-ohlc-engine.js?v=11",
-  "chart-dna-ui-trim.js?v=11",
+  "chart-ohlc-extractor.js?v=12",
+  "chart-ohlc-engine.js?v=12",
+  "chart-dna-ui-trim.js?v=12",
   "manifest.webmanifest",
   "icons/icon-192x192.png",
   "icons/icon-512x512.png",

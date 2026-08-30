@@ -39,6 +39,7 @@ const PAGE = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-
     <span>خلاصه روند</span><p>صعودی</p>
   </div>
   <div id="ohlc-auto-card" class="rounded-2xl p-4">کارتِ قدیمیِ افزونه</div>
+  <div id="ohlc-tool" class="ohlc-pinned" style="top:60px;left:796px"><button id="ohlc-open">📈 استخراج OHLC از تصویر</button></div>
 </div></div></body></html>`;
 
 const server = http.createServer((req, res) => {
@@ -153,8 +154,9 @@ const ok = (name, cond, info) => {
     'خلاصه روند visible as before');
   ok('the app header is untouched', doc.getElementById('btn-header-settings').style.display !== 'none');
   ok('the app root is never hidden', doc.getElementById('chart-dna-app').style.display !== 'none', 'chart-dna-app visible');
-  ok('the manual extraction button stays (the user asked for it)', !!doc.getElementById('ohlc-open'),
-    JSON.stringify((doc.getElementById('ohlc-open') || {}).textContent || ''));
+  ok('the old floating opener is gone too, not just hidden',
+    !doc.getElementById('ohlc-tool') && !doc.getElementById('ohlc-open'),
+    doc.getElementById('ohlc-tool') ? 'still in the DOM' : 'removed');
   ok('nothing threw on the page', errors.length === 0, errors.join(' | ') || 'none');
   ok('the trim hook is published for tests', win.ChartDnaUiTrim && win.ChartDnaUiTrim.hidden() === 2 && win.ChartDnaUiTrim.ids.length === 2,
     'v' + (win.ChartDnaUiTrim || {}).version + ' hiding ' + (win.ChartDnaUiTrim || {}).hidden());
@@ -169,6 +171,15 @@ const ok = (name, cond, info) => {
   await sleep(700);
   await sleep(900);                                          /* the slow sweep, not only the mutation */
   const fresh = clone.querySelector('canvas').parentElement;
+  /* an old cached build would put its card back; we take it again, but only so often */
+  const stale2 = doc.createElement('div');
+  stale2.id = 'ohlc-auto-card';
+  doc.getElementById('chart-dna-app').appendChild(stale2);
+  await sleep(900);
+  ok('a leftover card that comes back is removed again, with a bound on the fight',
+    !doc.getElementById('ohlc-auto-card') && (win.ChartDnaUiTrim.drops()['ohlc-auto-card'] || 0) >= 2,
+    'drops=' + JSON.stringify(win.ChartDnaUiTrim.drops()));
+
   ok('a panel the app renders later is hidden too (no id, matched by title)',
     fresh.style.display === 'none' && win.ChartDnaUiTrim.hidden() === 3, 'hidden=' + win.ChartDnaUiTrim.hidden());
 
@@ -227,9 +238,9 @@ const ok = (name, cond, info) => {
   const tags = (html.match(/chart-(?:ohlc|dna)-[\w-]+\.js\?v=(\d+)/g) || []).map((s) => s.slice(-2)).concat(
     (sw.match(/chart-(?:ohlc|dna)-[\w-]+\.js\?v=(\d+)/g) || []).map((s) => s.slice(-2)));
   ok('page and worker agree on one build tag', new Set(tags).size === 1 && tags.length === 6, 'v=' + tags.join(','));
-  ok('the worker version is bumped with the build tag',
-    /VERSION = "chartdna-v2\.11\.0-remove-pattern-panels"/.test(sw) && /chartdna-v2\.[0-9]+\.[0-9]+-[a-z0-9-]+/.test(sw),
-    (sw.match(/VERSION = "([^"]+)"/) || [])[1]);
+  const ver = (sw.match(/VERSION = "([^"]+)"/) || [])[1] || '';
+  ok('the worker version is a named build that moves with the tag',
+    /^chartdna-v\d+\.\d+\.\d+-[a-z0-9-]+$/.test(ver) && ver.indexOf('-') > 0, ver);
 
   server.close();
   console.log('');

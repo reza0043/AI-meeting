@@ -2,12 +2,13 @@
  * Runs the pixel-measurement engine (chart-ohlc-engine.js) on a chart
  * screenshot, shows the reconstructed candlestick chart, and can register the
  * result as a Chart DNA dataset so the pattern / history search runs on it.
+ * It has no button of its own: the app's own "select image" control drives it —
+ * every pick, drop and paste in the app passes a File through a FileReader and
+ * that is watched here, so the app's markup, styling and wording stay as they are.
  * Everything happens in the browser: no image and no number leaves the page.
  */
 (() => {
   const STYLE = `
-  #ohlc-tool{position:fixed;right:18px;bottom:82px;z-index:2147483647;font-family:Vazirmatn,Inter,system-ui,sans-serif}
-  #ohlc-open{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:14px;padding:11px 14px;box-shadow:0 8px 30px #0008;cursor:pointer;font-weight:700;font-family:inherit}
   #ohlc-modal{display:none;position:fixed;inset:0;background:#020617e6;backdrop-filter:blur(8px);z-index:2147483647;align-items:flex-start;justify-content:center;padding:14px;overflow:auto}
   #ohlc-card{width:min(1080px,97vw);background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-shadow:0 25px 80px #000a;font-family:inherit}
   #ohlc-card h2{margin:0 0 6px;font-size:19px}
@@ -41,12 +42,7 @@
   .ohlc-tabs button{background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:9px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit}
   .ohlc-tabs button[aria-selected=true]{background:#10b981;color:#04130e;border-color:#10b981;font-weight:700}
   .ohlc-hidden{display:none!important}
-  @media(max-width:820px){.ohlc-grid{grid-template-columns:1fr}#ohlc-tool{right:10px;bottom:74px}}
-  #ohlc-tool.ohlc-pinned{right:auto;bottom:auto}
-  #ohlc-tool.ohlc-pinned #ohlc-open{display:flex;align-items:center;gap:7px;min-height:40px;padding:8px 13px;border-radius:999px;background:#020617eb;border:1px solid #10b981;color:#a7f3d0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 6px 22px #000b;font-size:12.5px;line-height:1.2}
-  #ohlc-tool.ohlc-pinned #ohlc-open b{color:#34d399;font-weight:800;font-variant-numeric:tabular-nums}
-  #ohlc-tool.ohlc-pinned #ohlc-open:active{transform:scale(.97)}
-  #ohlc-tool.ohlc-pinned #ohlc-open[disabled]{opacity:.7}
+  @media(max-width:820px){.ohlc-grid{grid-template-columns:1fr}}
   `;
   const T = {
     open: '📈 استخراج OHLC از تصویر',
@@ -59,10 +55,8 @@
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
 
-  const rootEl = document.createElement('div');
-  rootEl.id = 'ohlc-tool';
-  rootEl.innerHTML = `<button id="ohlc-open" title="استخراج OHLC از اسکرین‌شات نمودار">${T.open}</button>`;
-  document.body.appendChild(rootEl);
+  /* there is no opener of our own any more: the app's own «انتخاب تصویر» control
+     carries this tool, so not one element is added to the app's page */
 
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
@@ -154,9 +148,7 @@
   });
 
   /* ------------------------------------------------------------ open/close */
-  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; if (rootEl) rootEl.style.visibility = v ? 'hidden' : ''; };
-  $('ohlc-open').addEventListener('click', () => show(true));
-  rootEl.addEventListener('click', (e) => { if (e.target === rootEl) show(false); });
+  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
   $('ohlc-close').addEventListener('click', () => show(false));
   modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
@@ -538,70 +530,51 @@
   /* a seam the tests can drive; browsers get the plain reload */
   function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
 
-  /* ------------------------------------------------- the opener, pinned to the top
-   * On a phone the image card is usually below the fold, so instead of a button in a
-   * far corner the opener is parked on the top-right corner of the picture itself and
-   * clamped to the viewport: it reads as part of the image and still follows the
-   * screen while the column scrolls.  chartdna_ohlc_pin === '0' gives the old corner. */
-  const PIN = 'chartdna_ohlc_pin';
-  let pinRaf = 0, lastPin = '';
-  function pinWanted() { let v = null; try { v = localStorage.getItem(PIN); } catch (e) { } return v !== '0'; }
-  /* where the pinned opener belongs: the right edge of the app column, in the
-     band under the app's own top bar, so it never covers the logo or the
-     settings button and still reads as part of that bar. */
-  function pinAnchor() {
-    const de = document.documentElement || {};
-    const vw = window.innerWidth || de.clientWidth || 1024;
-    const vh = window.innerHeight || de.clientHeight || 768;
-    const app = document.getElementById('chart-dna-app');
-    const ar = app ? app.getBoundingClientRect() : null;
-    const right = (ar && ar.width > 0) ? Math.min(ar.right, vw) : vw;
-    const bar = document.getElementById('btn-header-settings') || document.getElementById('btn-header-install');
-    const br = bar ? bar.getBoundingClientRect() : null;
-    const below = br && br.height > 0 ? br.bottom : 4;
-    return { vw: vw, vh: vh, right: right, below: below };
+  /* ------------------------------------------------- driven by the app's own picker
+   * The app funnels every picture the user chooses — the «انتخاب تصویر» control, its
+   * drop zone and the paste — through a FileReader of a real File, so that is the one
+   * place a pick can be noticed without touching, restyling or renaming that control.
+   * Cropping also uses a FileReader, but on a canvas blob: ignored on purpose. */
+  let lastPickSig = '', picking = false;
+  async function onPickedImage(url) {
+    if (!url || typeof url !== 'string' || url.indexOf('data:image') !== 0) return;
+    const sig = sigOf(url);
+    if (picking) return;
+    if (sig === lastPickSig && state.result) { show(true); return; }      /* the same picture again */
+    lastPickSig = sig;
+    picking = true;
+    try {
+      await new Promise((done) => loadImage(url, done));
+      status('تصویری که در برنامه انتخاب کردید اندازه‌گیری شد.');
+      const res = await run(sig);
+      if (res && res.bars && res.bars.length) show(true);                   /* a chart: show the work */
+      else if (modal.style.display === 'flex') show(true);                  /* panel already open: keep it in sync */
+    } catch (e) {
+      if (window.__ohlcLog) window.__ohlcLog('pick-driven extraction failed', e);
+    } finally { picking = false; }
   }
-  function keyOf(a) { return a ? [Math.round(a.right), Math.round(a.below), a.vw, a.vh].join(',') : ''; }
-  function placePin() {
-    if (!rootEl || !rootEl.parentElement) return;
-    if (!pinWanted()) { rootEl.className = ''; rootEl.style.top = ''; rootEl.style.left = ''; lastPin = ''; return; }
-    const a = pinAnchor();
-    const w = rootEl.offsetWidth || 200, h = rootEl.offsetHeight || 42, inset = 12;
-    const top = Math.round(Math.max(12, Math.min(a.below + 8, a.vh - h - 8)));
-    const left = Math.round(Math.max(8, Math.min(a.right - w - inset, a.vw - w - 8)));
-    rootEl.style.top = top + 'px';
-    rootEl.style.left = left + 'px';
-    rootEl.className = 'ohlc-pinned';
-    lastPin = keyOf(a);
-  }
-  function schedulePin() {
-    if (pinRaf) return;
-    const go = () => { pinRaf = 0; placePin(); };
-    pinRaf = window.requestAnimationFrame ? window.requestAnimationFrame(go) : setTimeout(go, 16);
-  }
-  function setPin(on) { try { localStorage.setItem(PIN, on ? '1' : '0'); } catch (e) { } placePin(); }
-  function setOpenNote(text) {
-    const btn = $('ohlc-open');
-    if (!btn) return;
-    const safe = String(text == null ? '' : text).replace(/[<>&]/g, '');
-    btn.innerHTML = T.open + (safe ? ' <b>' + safe + '</b>' : '');
-    btn.title = safe ? T.open + ' — ' + safe : T.open;
-    schedulePin();
-  }
-  (function watchPin() {
-    ['scroll', 'resize', 'orientationchange'].forEach((ev) => {
-      try { window.addEventListener(ev, schedulePin, { passive: true, capture: true }); } catch (e) { }
-    });
-    /* React can move or resize the top bar without firing anything we can hear */
-    setInterval(() => {
-      const k = pinWanted() ? keyOf(pinAnchor()) : '';
-      if (k !== lastPin || rootEl.className.indexOf('ohlc-pinned') < 0) placePin();
-    }, 400);
-    placePin();
+  (function hookAppUploads() {
+    const proto = window.FileReader && window.FileReader.prototype;
+    if (!proto || proto.__ohlcPickHook) return;
+    proto.__ohlcPickHook = true;
+    const readAsDataURL = proto.readAsDataURL;
+    proto.readAsDataURL = function (blob) {
+      let picked = false;
+      try {
+        picked = !!blob && typeof File === 'function' && blob instanceof File &&
+          /^image\//.test(blob.type || '') && !/\.(csv|json|txt)$/i.test(blob.name || '');
+      } catch (e) { picked = false; }
+      if (picked) {
+        this.addEventListener('load', () => {
+          try { onPickedImage(typeof this.result === 'string' ? this.result : ''); } catch (e) { }
+        });
+      }
+      return readAsDataURL.apply(this, arguments);
+    };
   })();
 
   window.ChartDnaOhlc = {
-    version: 4,
+    version: 5,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
@@ -615,9 +588,7 @@
     toCSV: () => window.ChartDNACV.toCSV(state.result),
     reload: reloadPage,
     open: () => show(true),
-    pin: setPin,
-    pinned: pinWanted,
-    note: setOpenNote
+    onPickedImage: (url) => onPickedImage(url)
   };
 
   $('ohlc-save').addEventListener('click', () => saveDataset(false));
@@ -652,8 +623,4 @@
     }
   })();
 
-  /* small nicety: keep the tool out of the way of the app's own controls */
-  new MutationObserver(() => {
-    if (document.body && !document.getElementById('ohlc-tool')) document.body.appendChild(rootEl);
-  }).observe(document.documentElement, { childList: true });
 })();

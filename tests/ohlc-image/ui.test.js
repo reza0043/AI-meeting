@@ -25,9 +25,20 @@ const PAGE = '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-
   '</head><body><div id="root"><div id="chart-dna-app" dir="rtl">' +
   '<header><button id="btn-header-settings">تنظیمات</button></header>' +
   '<button id="app-search">جستجو در تاریخچه</button>' +
-  '<div id="image-cropper-card"><canvas id="app-canvas"></canvas><img id="app-preview" src="blob:preview"></div>' +
+  '<div id="image-cropper-card"><canvas id="app-canvas"></canvas><img id="app-preview" src="blob:preview">' +
+  '<button id="app-pick" title="آپلود تصویر چارت" class="h-8 w-8 rounded-lg border border-slate-700">🖼️</button>' +
+  '<input id="app-file" type="file" accept="image/*" class="hidden">' +
+  '</div>' +
   '<img id="app-img" src="blob:something">' +
-  '</div></div></body></html>';
+  '</div></div>' +
+  /* the app's own upload funnel: the icon button opens a hidden file input and the
+     chosen File goes through a FileReader — exactly what the real bundle does */
+  '<script>window.__appImage=null;' +
+  'document.getElementById("app-pick").addEventListener("click",()=>document.getElementById("app-file").click());' +
+  'document.getElementById("app-file").addEventListener("change",(e)=>{' +
+  'const f=e.target.files&&e.target.files[0];if(!f)return;' +
+  'const r=new FileReader();r.onload=()=>{window.__appImage=r.result;};r.readAsDataURL(f);});<' +
+  '/script></body></html>';
 
 const server = http.createServer((req, res) => {
   const u = req.url.split('?')[0];
@@ -76,17 +87,6 @@ function patchWindow(window, blobs) {
   }
   win.Image = FakeImage;
   win.HTMLImageElement = FakeImage;
-  /* jsdom knows no layout: give the app image card and its canvas a geometry and
-     a scroll offset, so pinning the opener onto the picture can be measured. */
-  win.__layout = { scrollY: 0 };
-  const RECT = { 'chart-dna-app': [16, 0, 1008, 2400], 'btn-header-settings': [880, 12, 1000, 52],
-    'image-cropper-card': [20, 120, 520, 480], 'app-canvas': [28, 170, 512, 470], 'app-preview': [28, 160, 512, 470] };
-  win.Element.prototype.getBoundingClientRect = function () {
-    const r = RECT[this.id];
-    if (!r) return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON() { return this; } };
-    const top = r[1] - win.__layout.scrollY, bottom = r[3] - win.__layout.scrollY;
-    return { x: r[0], y: top, top, left: r[0], right: r[2], bottom, width: r[2] - r[0], height: bottom - top, toJSON() { return this; } };
-  };
   win.URL.createObjectURL = (b) => { const u = 'blob:mock/' + (blobs.size + 1); blobs.set(u, b); return u; };
   win.URL.revokeObjectURL = () => { };
 }
@@ -146,38 +146,41 @@ const ok = (name, cond, info) => {
   const txt = (id) => ($(id).textContent || '').trim();
 
   console.log('1) the tool mounts next to the app');
-  ok('floating button injected', !!$('ohlc-open'), $('ohlc-open') ? JSON.stringify(txt('ohlc-open')) : 'missing');
+  ok('nothing of ours floats in the page (no #ohlc-tool, no #ohlc-open)', !$('ohlc-open') && !$('ohlc-tool'),
+    ($('ohlc-open') ? 'opener still there ' : '') + ($('ohlc-tool') ? 'tool still there' : 'clean'));
   ok('modal starts hidden', !!$('ohlc-modal') && $('ohlc-modal').style.display !== 'flex' && win.getComputedStyle($('ohlc-modal')).display !== 'flex',
     'inline ' + JSON.stringify($('ohlc-modal').style.display) + ', computed ' + win.getComputedStyle($('ohlc-modal')).display);
-  $('ohlc-open').click();
-  ok('button opens the modal', $('ohlc-modal').style.display === 'flex');
+  win.ChartDnaOhlc.open();
+  ok('the panel still opens through the published seam', $('ohlc-modal').style.display === 'flex');
+  $('ohlc-close').click();
+  ok('and closes again', $('ohlc-modal').style.display === 'none');
   ok('drag & drop and paste are wired', /dragover/.test($('ohlc-drop').getAttribute('class') || '') || !!$('ohlc-drop'), 'drop zone present');
 
-  console.log('1b) the opener is pinned to the top of the page, right side');
-  const tool = $('ohlc-tool');
-  ok('it sits in the app column, under the top bar and flush right',
-    /ohlc-pinned/.test(tool.className) && tool.style.top === '60px' && tool.style.left === '796px',
-    tool.className + ' top=' + tool.style.top + ' left=' + tool.style.left);
-  ok('it does not cover the app header', 12 !== parseInt(tool.style.top, 10), 'top=' + tool.style.top);
-  win.__layout.scrollY = 400;                       /* the user scrolls the page down */
-  win.dispatchEvent(new win.Event('scroll'));
-  for (let i = 0; i < 40 && tool.style.top !== '12px'; i++) await sleep(20);
-  ok('it stays pinned to the top of the screen instead of scrolling away', tool.style.top === '12px', 'top=' + tool.style.top);
-  win.__layout.scrollY = 0;
-  win.dispatchEvent(new win.Event('scroll'));
-  for (let i = 0; i < 40 && tool.style.top !== '60px'; i++) await sleep(20);
-  ok('and returns under the top bar at the top of the page', tool.style.top === '60px', 'top=' + tool.style.top);
-  win.ChartDnaOhlc.note('296 کندل');
-  ok('the pinned button carries the result count', /296 کندل/.test(txt('ohlc-open')), txt('ohlc-open'));
-  win.ChartDnaOhlc.pin(false);
-  ok('the pin can be switched off back to the corner',
-    !/ohlc-pinned/.test(tool.className) && tool.style.top === '' && win.localStorage.getItem('chartdna_ohlc_pin') === '0',
-    JSON.stringify({ cls: tool.className, top: tool.style.top, key: win.localStorage.getItem('chartdna_ohlc_pin') }));
-  win.ChartDnaOhlc.pin(true);
-  await sleep(60);
-  ok('switching it back on re-pins it to the top', /ohlc-pinned/.test(tool.className) && tool.style.top === '60px',
-    tool.className + ' top=' + tool.style.top);
-  win.ChartDnaOhlc.pin(false);                      /* the rest of this suite is layout-free */
+  console.log('1b) the app\u2019s own «انتخاب تصویر» button drives the tool');
+  const pick = $('app-pick');
+  const look = pick.className + '|' + pick.textContent + '|' + pick.getAttribute('title');
+  const appFile = new win.File([fs.readFileSync(IMG)], 'chart-shot.jpg', { type: 'image/jpeg' });
+  Object.defineProperty($('app-file'), 'files', { value: [appFile], configurable: true });
+  $('app-file').dispatchEvent(new win.Event('change', { bubbles: true }));
+  for (let i = 0; i < 150 && $('ohlc-modal').style.display !== 'flex'; i++) await sleep(100);
+  ok('one pick on the app button opens our panel', $('ohlc-modal').style.display === 'flex',
+    'display=' + $('ohlc-modal').style.display);
+  ok('the app kept its own upload (we only watched it)', typeof win.__appImage === 'string' && win.__appImage.indexOf('data:image') === 0,
+    (win.__appImage || '').slice(0, 22) + '…');
+  const repPick = win.__ohlcReport || {};
+  const pickBars = Array.isArray(repPick.bars) ? repPick.bars.length : (repPick.bars || 0);
+  ok('and the picture it picked is the one measured', pickBars >= 250, pickBars + ' bars');
+  ok('the app button is untouched: same icon, same name, same classes',
+    look === pick.className + '|' + pick.textContent + '|' + pick.getAttribute('title'), JSON.stringify(pick.className));
+  ok('no element of ours was added inside the app card', !$('image-cropper-card').querySelector('[id^="ohlc-"]'), 'clean');
+  ok('picking a non-picture file is left alone', (() => {
+    const before = $('ohlc-status').textContent;
+    const txt = new win.File([Buffer.from('a,b\n1,2\n', 'utf8')], 'data.csv', { type: 'text/csv' });
+    Object.defineProperty($('app-file'), 'files', { value: [txt], configurable: true });
+    $('app-file').dispatchEvent(new win.Event('change', { bubbles: true }));
+    return $('ohlc-status').textContent === before;
+  })());
+  await sleep(200);
 
   console.log('2) extraction through the file input');
   const file = new win.File([fs.readFileSync(IMG)], 'shot.jpg', { type: 'image/jpeg' });
