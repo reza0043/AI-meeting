@@ -14,8 +14,11 @@
  */
 (() => {
   const STYLE = `
-  #ohlc-modal{display:none;position:fixed;inset:0;background:#020617e6;backdrop-filter:blur(8px);z-index:2147483647;align-items:flex-start;justify-content:center;padding:14px;overflow:auto}
-  #ohlc-card{width:min(1080px,97vw);background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-shadow:0 25px 80px #000a;font-family:inherit}
+  #ohlc-modal{display:none;position:fixed;inset:0;background:#020617e6;backdrop-filter:blur(8px);z-index:2147483647;flex-direction:column;align-items:center;justify-content:flex-start;padding:14px;overflow:auto}
+  /* the window is two cards now — the picture and, under it, the table — and they share
+     one width, one frame and one rhythm, so the page reads as a single column */
+  #ohlc-card,#ohlc-table-card{width:min(1080px,97vw);background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-sizing:border-box;box-shadow:0 25px 80px #000a;font-family:inherit}
+  #ohlc-table-card{margin-top:12px}
   #ohlc-card h2{margin:0;font-size:19px}
   /* the six keys sit in one row, exactly like #remote-control-deck: 36px tall, rounded,
      equal widths, icon only; the values below are the same numbers the app's utilities give
@@ -46,9 +49,12 @@
   @media(min-width:820px){#ohlc-chart,#ohlc-orig,#ohlc-ann{min-height:340px;max-height:390px}}
   #ohlc-status{margin-top:10px;color:#a7f3d0;font-size:12.5px;white-space:pre-wrap;line-height:1.7}
   .ohlc-warn{color:#fbbf24}.ohlc-err{color:#fca5a5}
-  .ohlc-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11.5px;font-variant-numeric:tabular-nums}
-  .ohlc-table th,.ohlc-table td{padding:5px 6px;border-bottom:1px solid #1e293b;text-align:right}
-  .ohlc-table th{color:#94a3b8;font-weight:600}
+  #ohlc-table{max-height:min(46vh,420px);overflow:auto;border:1px solid #1e293b;border-radius:10px;background:#0f172a55}
+  .ohlc-table{width:100%;border-collapse:separate;border-spacing:0;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .ohlc-table th,.ohlc-table td{padding:5px 8px;border-bottom:1px solid #1e293b;text-align:right}
+  .ohlc-table thead th{position:sticky;top:0;background:#0f1a2b;color:#94a3b8;font-weight:600;z-index:1}
+  .ohlc-table .ohlc-dir{text-align:center;white-space:nowrap;font-size:13px;line-height:1}
+  .ohlc-up{color:#34d399}.ohlc-down{color:#f87171}.ohlc-nd{color:#475569}
   .ohlc-hidden{display:none!important}
   `;
   const T = {
@@ -102,13 +108,13 @@
       <canvas id="ohlc-orig" class="ohlc-hidden"></canvas>
       <canvas id="ohlc-ann" class="ohlc-hidden"></canvas>
     </div>
-    <div id="ohlc-table"></div>
     <div id="ohlc-status">هنوز تصویری انتخاب نشده.</div>
     <div class="ohlc-actions">
       <button class="ohlc-secondary" id="ohlc-csv" disabled>${T.csv}</button>
       <button class="ohlc-secondary" id="ohlc-png" disabled>${T.png}</button>
     </div>
-  </div>`;
+  </div>
+  <div id="ohlc-table-card" class="ohlc-hidden"><div id="ohlc-table"></div></div>`;
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
@@ -183,6 +189,8 @@
       state.imgKey = sigOf(src);
       state.confirmedKey = null;
       $('ohlc-confirm').disabled = true;
+      $('ohlc-table').innerHTML = '';
+      $('ohlc-table-card').classList.add('ohlc-hidden');
       try { URL.revokeObjectURL(src); } catch (e) { /* not a blob url */ }
       drawOriginal();
       done && done();
@@ -280,12 +288,18 @@
     setView('chart');
     $('ohlc-confirm').disabled = !(res.bars && res.bars.length);
     const rows = res.bars.slice(0, 14).concat(res.bars.length > 16 ? [{ candle: '…' }] : []).concat(res.bars.slice(-4));
-    $('ohlc-table').innerHTML = '<table class="ohlc-table"><thead><tr><th>#</th><th>Date</th><th>O</th><th>H</th><th>L</th><th>C</th><th>Dir</th><th>Conf</th><th>note</th></tr></thead><tbody>' +
-      rows.map((b) => b.candle === '…' ? '<tr><td colspan=9 style="text-align:center">…</td></tr>'
-        : `<tr><td>${b.candle}</td><td>${b.date || ''}</td><td>${f(b.open)}</td><td>${f(b.high)}</td><td>${f(b.low)}</td><td>${f(b.close)}</td><td>${b.direction || ''}</td><td>${b.confidence == null ? '' : b.confidence}</td><td style="text-align:right;color:#94a3b8">${(b.notes || []).join('; ')}</td></tr>`).join('') +
+    $('ohlc-table').innerHTML = '<table class="ohlc-table"><thead><tr><th>#</th><th>Date</th><th>O</th><th>H</th><th>L</th><th>C</th><th class="ohlc-dir">Dir</th><th>Conf</th></tr></thead><tbody>' +
+      rows.map((b) => b.candle === '…' ? '<tr><td colspan=8 class="ohlc-dir">…</td></tr>'
+        : `<tr><td>${b.candle}</td><td>${b.date || ''}</td><td>${f(b.open)}</td><td>${f(b.high)}</td><td>${f(b.low)}</td><td>${f(b.close)}</td><td class="ohlc-dir">${dirMark(b.direction)}</td><td>${b.confidence == null ? '' : b.confidence}</td></tr>`).join('') +
       '</tbody></table>';
+    $('ohlc-table-card').classList.remove('ohlc-hidden');
   }
   const f = (v) => v == null ? '—' : v.toFixed(2);
+  /* the direction is one glyph, not a word: an arrow up or down; the word stays where it
+     does not crowd the row — in the tooltip and in the accessible name of the cell */
+  const dirMark = (d) => d === 'Bullish' ? `<span class="ohlc-up" title="Bullish" aria-label="Bullish">\u2191</span>`
+    : d === 'Bearish' ? `<span class="ohlc-down" title="Bearish" aria-label="Bearish">\u2193</span>`
+    : `<span class="ohlc-nd" title="جهت از پیکسل‌ها خوانده نشد" aria-label="جهت خوانده نشد">\u00b7</span>`;
 
   /* -------------------------------------------------------------- report -- */
   function summaryText(res, ms) {
@@ -387,7 +401,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 14,
+    version: 15,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,

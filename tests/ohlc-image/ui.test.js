@@ -207,10 +207,23 @@ const ok = (name, cond, info) => {
   ok('no explanation sits under the name', !$('ohlc-card').querySelector('h2 + .ohlc-muted') &&
     h2.nextElementSibling.className.indexOf('ohlc-muted') < 0,
     'next sibling is <' + h2.nextElementSibling.tagName + ' class="' + h2.nextElementSibling.className + '">');
-  ok('the card is one column now: the row of keys, the picture, the table',
+  ok('the card is one column now: the row of keys and the picture, and nothing else',
     !!h2.nextElementSibling.querySelector('#ohlc-bar') && !$('ohlc-card').querySelector('.ohlc-grid') &&
-    !$('ohlc-card').querySelector('.ohlc-box'),
+    !$('ohlc-card').querySelector('.ohlc-box') && !$('ohlc-card').querySelector('#ohlc-table'),
     'children of the card: ' + Array.prototype.slice.call($('ohlc-card').children).map((e) => e.id || e.className).join(' · '));
+  const cardCss = Array.prototype.slice.call(win.document.querySelectorAll('style')).map((e) => e.textContent).join('\n');
+  ok('the table gets a card of its own under the window, with the very same width',
+    !!$('ohlc-table-card') && $('ohlc-modal').children.length === 2 &&
+    /#ohlc-card,#ohlc-table-card\{width:min\(1080px,97vw\)[^}]*border:1px solid #334155;border-radius:18px/.test(cardCss),
+    'children of the modal: ' + Array.prototype.slice.call($('ohlc-modal').children).map((e) => e.id).join(' · '));
+  ok('and the modal is a column, so the two cards sit one under the other',
+    /#ohlc-modal\{[^}]*flex-direction:column;align-items:center/.test(cardCss) &&
+    /#ohlc-table-card\{margin-top:12px\}/.test(cardCss), 'one column, one gap');
+  ok('the table card is empty and out of the way until something was extracted',
+    $('ohlc-table-card').classList.contains('ohlc-hidden') && !$('ohlc-table').innerHTML.trim(), 'hidden while empty');
+  ok('it scrolls under a sticky head, so a long table keeps the page short',
+    /#ohlc-table\{max-height:min\(46vh,420px\);overflow:auto/.test(cardCss) &&
+    /\.ohlc-table thead th\{position:sticky;top:0/.test(cardCss), 'scroll box + sticky head');
   ok('and the old wording is nowhere in the panel',
     !$('ohlc-card').textContent.match(/بازسازی OHLC از اسکرین|computer vision|حافظهٔ مدل/), 'clean');
   const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace', 'ohlc-close'];
@@ -382,6 +395,49 @@ const ok = (name, cond, info) => {
   ok('both downloads are enabled, and there is no third one', ['ohlc-csv', 'ohlc-png'].every((id) => !$(id).disabled) && !$('ohlc-save'),
     'csv+png live · save gone');
   ok('preview table rendered', ($('ohlc-table').querySelectorAll('tbody tr') || []).length > 0, $('ohlc-table').querySelectorAll('tbody tr').length + ' rows');
+  const th = Array.prototype.slice.call($('ohlc-table').querySelectorAll('thead th')).map((x) => x.textContent.trim());
+  ok('the table has eight columns and no note column', th.length === 8 && th.indexOf('note') < 0, th.join(' · '));
+  const dcell = $('ohlc-table').querySelector('tbody td.ohlc-dir');
+  ok('the direction is one arrow, not the word',
+    !!dcell && /^[\u2191\u2193\u00b7]$/.test((dcell.textContent || '').trim()) &&
+    /Bullish|Bearish/.test((dcell.firstElementChild.getAttribute('title') || '')),
+    (dcell.outerHTML || '').replace(/\s+/g, ' ').slice(0, 96));
+  ok('the word is not thrown away: it is the name of the cell',
+    th.indexOf('Dir') >= 0 && !!dcell.firstElementChild.getAttribute('aria-label'),
+    'aria-label = ' + dcell.firstElementChild.getAttribute('aria-label'));
+  ok('nothing of the notes is rendered in the table',
+    !/pixel|assumption|interpolated|occluded|excluded|row \d/i.test($('ohlc-table').textContent),
+    'they stay in window.__ohlcReport only');
+  ok('the card under the window opens with the first result',
+    !$('ohlc-table-card').classList.contains('ohlc-hidden'), 'shown now');
+  if (process.env.OHLC_PREVIEW) {
+    const cssTxt = Array.prototype.slice.call(win.document.querySelectorAll('style')).map((e) => e.textContent).join('\n')
+      .replace(/#ohlc-modal\{[^}]*\}/, '#ohlc-modal{display:block;position:static;background:none;backdrop-filter:none;padding:14px}');
+    fs.writeFileSync(process.env.OHLC_PREVIEW, '<!doctype html>\n' +
+      '<html lang="fa" dir="rtl"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>پیش‌نمایش — جدول در پنجرهٔ خودش، با فلش و بدون note</title><style>' +
+      'body{margin:0;background:#060913;color:#e5e7eb;font-family:ui-sans-serif,system-ui,sans-serif}' +
+      'main{max-width:1120px;margin:0 auto;padding:16px 12px}.note{color:#94a3b8;font-size:12.5px;line-height:1.9}' +
+      'code{color:#7dd3fc;font-size:11.5px}' + cssTxt + '</style></head><body><main>' +
+      '<h1 style="font-size:17px;margin:0 0 10px">HTML واقعیِ همان کد، بعد از یک استخراج واقعی (۲۹۶ کندل)</h1>' +
+      $('ohlc-modal').innerHTML +
+      '<p class="note">دو کارت، یک عرض: پنجرهٔ «ورود تصویر» و زیرش پنجرهٔ جدول. ستون <code>note</code> از جدول رفت ' +
+      '(یادداشت‌ها فقط در <code>window.__ohlcReport</code> می‌مانند) و جهت کندل یک فلش است: <code>↑</code> سبز، ' +
+      '<code>↓</code> قرمز؛ کلمهٔ Bullish/Bearish در <code>title</code> و <code>aria-label</code> همان سلول مانده. ' +
+      'قابِ تصویر در این پیش‌نمایش خالی است چون بوم (<code>canvas</code>) در HTML ذخیره نمی‌شود؛ در برنامه همان ' +
+      'اسکرین‌شات و کندل‌های بازسازی‌شده داخلش رسم می‌شوند.</p></main></body></html>\n');
+    console.log('   preview written to ' + process.env.OHLC_PREVIEW);
+  }
+  $('ohlc-file').dispatchEvent(new win.Event('change', { bubbles: true }));
+  await sleep(300);
+  ok('and a new picture takes the stale table away with it',
+    $('ohlc-table-card').classList.contains('ohlc-hidden') && !$('ohlc-table').innerHTML.trim(), 'hidden + empty again');
+  $('ohlc-run').click();
+  for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
+  ok('the table comes back with the new result', !$('ohlc-table-card').classList.contains('ohlc-hidden') &&
+    ($('ohlc-table').querySelectorAll('tbody tr') || []).length > 0,
+    $('ohlc-table').querySelectorAll('tbody tr').length + ' rows after the second run');
   ok('reconstruction canvas painted', $('ohlc-chart').width > 300 && $('ohlc-chart').height > 100, $('ohlc-chart').width + 'x' + $('ohlc-chart').height);
   ok('annotated overlay drawn without error', !/خطا در رسم/.test(st) && $('ohlc-ann').width > 0, 'canvas ' + $('ohlc-ann').width + 'x' + $('ohlc-ann').height);
 
