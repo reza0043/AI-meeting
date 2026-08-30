@@ -154,9 +154,10 @@ const ok = (name, cond, info) => {
 
 (async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const idbLog = {};
+  const idbLog = { opens: 0 };
   const idb = {
     open() {
+      idbLog.opens++;          /* the tool must never touch the app's store again */
       const req = {
         result: {
           objectStoreNames: { contains: () => true }, createObjectStore() { },
@@ -202,6 +203,17 @@ const ok = (name, cond, info) => {
     'next sibling is <' + h2.nextElementSibling.tagName + ' class="' + h2.nextElementSibling.className + '">');
   ok('and the old wording is nowhere in the panel',
     !$('ohlc-card').textContent.match(/بازسازی OHLC از اسکرین|computer vision|حافظهٔ مدل/), 'clean');
+  const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace'];
+  ok('the pick / grab / save / save-and-search keys are gone, and their options with them',
+    GONE.every((id) => !$(id)), GONE.filter((id) => $(id)).join(',') || 'none of them in the DOM');
+  ok('the rows keep only what the window still does',
+    !!$('ohlc-run') && !!$('ohlc-csv') && !!$('ohlc-png') && !!$('ohlc-close'), 'run · csv · png · close');
+  ok('the image still enters through the drop zone (or a paste)', !!$('ohlc-drop') && !!$('ohlc-file'),
+    'drop zone + its own file input');
+  ok('the connection box is off the card', !/اتصال به موتور/.test($('ohlc-card').textContent), 'no such heading');
+  ok('and nothing of ours can be called to write into the app',
+    typeof win.ChartDnaOhlc.saveDataset === 'undefined' && typeof win.ChartDnaOhlc.reload === 'undefined',
+    'saveDataset=' + typeof win.ChartDnaOhlc.saveDataset + ', reload=' + typeof win.ChartDnaOhlc.reload);
 
   console.log('1b) the deck key «ورود تصویر چارت» opens the OHLC environment, not the device storage');
   const deck = $('btn-import-image');
@@ -225,9 +237,9 @@ const ok = (name, cond, info) => {
   /* the picture is chosen inside this environment */
   let fileClicks = 0;
   $('ohlc-file').addEventListener('click', () => fileClicks++);
-  $('ohlc-pick').dispatchEvent(new win.Event('click', { bubbles: true }));
+  $('ohlc-drop').dispatchEvent(new win.Event('click', { bubbles: true }));
   await sleep(20);
-  ok('the panel’s own control opens its own file input', fileClicks === 1, fileClicks + ' clicks');
+  ok('the centred drop zone opens the file input of the panel', fileClicks === 1, fileClicks + ' clicks');
   const imgHere = new win.File([fs.readFileSync(IMG)], 'from-gallery.jpg', { type: 'image/jpeg' });
   Object.defineProperty($('ohlc-file'), 'files', { value: [imgHere], configurable: true });
   $('ohlc-file').dispatchEvent(new win.Event('change', { bubbles: true }));
@@ -286,7 +298,8 @@ const ok = (name, cond, info) => {
   ok('manual-review count reported', typeof q.meanConfidence === 'number' && Array.isArray(q.needReview), (q.needReview || []).length + ' flagged, mean conf ' + q.meanConfidence);
   ok('limitation stated in the status text', /محدودیت/.test(st), st.split('\n').slice(-1)[0]);
   ok('nothing invented: bars without a date source keep Date empty', nBars > 0, st.split('\n').filter((l) => /تاریخ/.test(l)).join(' / ').slice(0, 120) || 'no date line');
-  ok('all four action buttons enabled', ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].every((id) => !$(id).disabled));
+  ok('both downloads are enabled, and there is no third one', ['ohlc-csv', 'ohlc-png'].every((id) => !$(id).disabled) && !$('ohlc-save'),
+    'csv+png live · save gone');
   ok('preview table rendered', ($('ohlc-table').querySelectorAll('tbody tr') || []).length > 0, $('ohlc-table').querySelectorAll('tbody tr').length + ' rows');
   ok('reconstruction canvas painted', $('ohlc-chart').width > 300 && $('ohlc-chart').height > 100, $('ohlc-chart').width + 'x' + $('ohlc-chart').height);
   ok('annotated overlay drawn without error', !/خطا در رسم/.test(st) && $('ohlc-ann').width > 0, 'canvas ' + $('ohlc-ann').width + 'x' + $('ohlc-ann').height);
@@ -334,46 +347,39 @@ const ok = (name, cond, info) => {
     data.filter((l) => /,2026-\d\d-\d\d,/.test(l)).length + ' dated rows');
   ok('Time column stays empty', (lines[50] || '').split(',')[2] === '', 'row 50: ' + lines[50]);
 
-  console.log('4) hand-off to Chart DNA');
-  $('ohlc-save-search').click();
-  await sleep(500);
-  const rec = idbLog.rec;
-  ok('dataset written to IndexedDB', !!rec, rec ? rec.id + ' as ' + rec.name : 'nothing stored');
-  ok('store is market_datasets', idbLog.store === 'market_datasets' || idbLog.store === undefined, idbLog.store);
-  ok('record has the app schema', !!(rec && rec.id && rec.name && rec.symbol && rec.timeframe && Array.isArray(rec.candles) && rec.candles.length === nBars),
-    rec ? Object.keys(rec).join(',') + ' | ' + rec.candles.length + ' candles' : '');
-  ok('candles carry the app fields', rec && rec.candles.every((c) => ['timestamp', 'open', 'high', 'low', 'close', 'volume'].every((k) => k in c)),
-    rec ? Object.keys(rec.candles[0]).join(',') : '');
-  ok('OHLC invariants survive into the dataset', rec && rec.candles.every((c) => c.high >= Math.max(c.open, c.close) - 1e-6 && c.low <= Math.min(c.open, c.close) + 1e-6),
-    rec ? rec.candles.length + ' checked' : '');
-  ok('volume is 0, never guessed', rec && rec.candles.every((c) => c.volume === 0), 'sample volume ' + (rec && rec.candles[0].volume));
-  const ids = JSON.parse(win.localStorage.getItem('chartdna_selected_dataset_ids') || '[]');
-  ok('dataset id appended to the selection', ids.indexOf(rec.id) >= 0, JSON.stringify(ids));
-  ok('auto-search flag set for the next load', win.sessionStorage.getItem('chartdna_ohlc_autosearch') === rec.id, win.sessionStorage.getItem('chartdna_ohlc_autosearch'));
-  const pend = win.sessionStorage.getItem('chartdna_ohlc_pending_pattern');
-  ok('pattern queued when the app has no library yet', !!pend, pend ? JSON.parse(pend).points.length + ' points' : 'none');
+  console.log('4) the window writes nothing into the app any more');
+  await sleep(300);
+  ok('the app\u2019s dataset store was never opened', idbLog.opens === 0, 'IndexedDB opens=' + idbLog.opens);
+  ok('no pattern was queued for the library', win.sessionStorage.getItem('chartdna_ohlc_pending_pattern') === null);
+  ok('nothing was queued to auto-run the app search', win.sessionStorage.getItem('chartdna_ohlc_autosearch') === null);
+  ok('the app\u2019s own search button never got a click from us', searchClicks === 0, searchClicks + ' clicks');
+  const lsKeys = [];
+  for (let i = 0; i < win.localStorage.length; i++) lsKeys.push(win.localStorage.key(i));
+  ok('the user\u2019s dataset selection and pattern library are untouched',
+    lsKeys.indexOf('chartdna_selected_dataset_ids') < 0 && lsKeys.indexOf('chartdna_saved_patterns') < 0,
+    'localStorage: ' + lsKeys.join(',') );
+  const ours = lsKeys.filter((k) => /^chartdna_/.test(k));
+  ok('at most the typed form is kept, nothing else', ours.every((k) => k === 'chartdna_ohlc_form'), ours.join(',') || 'nothing under chartdna_*');
   ok('no script errors on the page', errors.length === 0, errors.join(' | ') || 'none');
-  ok('search was not clicked before the reload', searchClicks === 0, searchClicks + ' clicks');
 
-  console.log('5) after the reload the app is driven');
-  const idb2 = { open: () => ({ onsuccess: null, onerror: null, result: { objectStoreNames: { contains: () => true }, createObjectStore() { }, transaction: () => ({ objectStore: () => ({ put: () => ({ }) }), oncomplete: null }) } }) };
-  const patSeed = JSON.stringify([{ id: 'builtin_1', name: 'الگوی داخلی', category: 'Reversal', points: [1, 2, 3, 4, 5], normalizedPoints: [-1, -0.5, 0, 0.5, 1] }]);
-  const dom2 = await load({
-    idb: idb2,
-    localStorage: { chartdna_saved_patterns: patSeed },
-    sessionStorage: { chartdna_ohlc_autosearch: 'img-test', chartdna_ohlc_pending_pattern: pend }
-  });
-  const doc2 = dom2.window.document;
-  let clicked2 = 0;
-  doc2.getElementById('app-search').addEventListener('click', () => clicked2++);
-  await sleep(3400);
-  ok('the app search button was clicked once', clicked2 === 1, clicked2 + ' clicks');
-  ok('one-shot flag cleared', dom2.window.sessionStorage.getItem('chartdna_ohlc_autosearch') === null, JSON.stringify(dom2.window.sessionStorage.getItem('chartdna_ohlc_autosearch')));
-  const lib = JSON.parse(dom2.window.localStorage.getItem('chartdna_saved_patterns'));
-  const added = lib.filter((p) => p.id.indexOf('custom_dna_img_') === 0)[0];
-  ok('queued pattern merged into the library', !!added, added ? added.name + ', ' + added.points.length + ' points' : 'missing');
-  ok('built-in patterns are not overwritten', lib.filter((p) => p.id === 'builtin_1').length === 1, lib.length + ' entries');
-  ok('pending queue emptied', dom2.window.sessionStorage.getItem('chartdna_ohlc_pending_pattern') === null);
+  /* a page that loads with the app's own data present must not have it touched */
+  const patSeed = JSON.stringify([{ id: 'builtin_1', name: 'الگوی داخلی', category: 'Reversal', points: [1, 2, 3, 4, 5] }]);
+  const dom2 = await load({ idb, localStorage: { chartdna_saved_patterns: patSeed, chartdna_selected_dataset_ids: '["ds-user-1"]' } });
+  await sleep(900);
+  const ls2 = [];
+  for (let i = 0; i < dom2.window.localStorage.length; i++) ls2.push(dom2.window.localStorage.key(i));
+  ok('an existing library and selection survive a load of our window untouched',
+    dom2.window.localStorage.getItem('chartdna_saved_patterns') === patSeed &&
+    dom2.window.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1"]' &&
+    ls2.every((k) => !/^chartdna_ohlc_pending/.test(k)), ls2.join(','));
+  try { dom2.window.close(); } catch (e) { }
+
+  console.log('5) the extraction itself still works through what is left');
+  $('ohlc-run').click();
+  for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
+  ok('run still measures the picture', (Array.isArray((win.__ohlcReport || {}).bars) ? win.__ohlcReport.bars.length : 0) >= 250,
+    ((win.__ohlcReport || {}).bars || []).length + ' bars');
+  ok('and the store is still untouched after a run', idbLog.opens === 0, 'opens=' + idbLog.opens);
   ok('still no page errors', errors.length === 0, errors.join(' | ') || 'none');
 
   /* ---- a page without that key: nothing is intercepted, the tool is still reachable ---- */
@@ -393,8 +399,9 @@ const ok = (name, cond, info) => {
   winN.ChartDnaOhlc.open();
   ok('but the environment is still reachable', docN.getElementById('ohlc-modal').style.display === 'flex',
     'display=' + docN.getElementById('ohlc-modal').style.display);
-  ok('and it carries its own upload control', !!docN.getElementById('ohlc-file') && !!docN.getElementById('ohlc-pick'),
-    JSON.stringify((docN.getElementById('ohlc-pick') || {}).textContent || ''));
+  ok('and it takes the image through its own drop zone',
+    !!docN.getElementById('ohlc-file') && !!docN.getElementById('ohlc-drop') && !docN.getElementById('ohlc-pick'),
+    'drop zone + input, no pick button');
   ok('no page errors in the second build either', errors.length === 0, errors.join(' | ') || 'none');
   try { domN.window.close(); } catch (e) { }
 

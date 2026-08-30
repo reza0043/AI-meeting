@@ -3,7 +3,9 @@
  * screenshot, shows the reconstructed candlestick chart, and can register the
  * result as a Chart DNA dataset so the pattern / history search runs on it.
  * The window is named after what it is for: an image goes in, candles come out.
- * No explanation is printed under its name.
+ * It is read-only by design: the extracted candles, the CSV and the annotated
+ * picture stay on this page — nothing here writes into the app's dataset store,
+ * its pattern library or its search.
  * It has no button of its own: the app's picture-icon key in the recorder-like play
  * strip (#btn-import-image, «ورود تصویر چارت») opens this environment instead of the
  * device storage, and the screenshot is chosen here. The key keeps its icon, name and
@@ -50,9 +52,8 @@
   const T = {
     title: 'ورود تصویر',
     run: 'استخراج کندل‌ها', csv: 'دانلود CSV', png: 'دانلود تصویر حاشیه‌نویسی‌شده',
-    save: 'ثبت به‌عنوان دیتاست Chart DNA', saveSearch: 'ثبت و اجرای جستجو', close: 'بستن',
-    busy: 'در حال پردازش…', grab: 'استفاده از تصویری که در برنامه آپلود کرده‌اید',
-    pick: '📷 انتخاب تصویر از حافظهٔ دستگاه', pickHint: 'تصویر اسکرین‌شات چارت را از حافظه انتخاب کنید',
+    close: 'بستن',
+    busy: 'در حال پردازش…', pickHint: 'تصویر اسکرین‌شات چارت را از حافظه انتخاب کنید',
     calibNote: 'برای کالیبراسیون دستی، روی خط‌های راهنمای محور قیمت در تصویر کلیک کنید و مقدارش را وارد کنید.'
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
@@ -72,8 +73,6 @@
           <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
         </div>
         <div class="ohlc-actions" style="margin-top:8px">
-          <button class="ohlc-primary" id="ohlc-pick" type="button">${T.pick}</button>
-          <button class="ohlc-secondary" id="ohlc-grab">${T.grab}</button>
           <button class="ohlc-primary" id="ohlc-run">${T.run}</button>
         </div>
         <canvas id="ohlc-orig" class="ohlc-hidden"></canvas>
@@ -96,11 +95,6 @@
           <label>شروع ساعت اولین کندل (اختیاری، HH:MM — برای پر کردن Time)</label><input id="ohlc-t0" placeholder="00:00">
         </div>
         <div class="ohlc-box" style="margin-top:10px">
-          <h3>اتصال به موتور Chart DNA</h3>
-          <label style="display:flex;gap:7px;align-items:center;margin:2px 0"><input type="checkbox" id="ohlc-opt-pattern" checked style="width:auto"><span>الگوی بازسازی‌شده (سری قیمت بسته‌شدن) به کتابخانهٔ الگوها اضافه شود تا جستجوی DNA روی آن کار کند</span></label>
-          <label style="display:flex;gap:7px;align-items:center;margin:2px 0"><input type="checkbox" id="ohlc-opt-replace" style="width:auto"><span>فقط این دیتاست انتخاب شود (اگر تیک نزند، به انتخاب‌های فعلی اضافه می‌شود)</span></label>
-        </div>
-        <div class="ohlc-box" style="margin-top:10px">
           <h3>کالیبراسیون محور قیمت</h3>
           <div class="ohlc-muted">${T.calibNote}</div>
           <div class="ohlc-refrow">
@@ -121,15 +115,13 @@
     <div class="ohlc-actions">
       <button class="ohlc-secondary" id="ohlc-csv" disabled>${T.csv}</button>
       <button class="ohlc-secondary" id="ohlc-png" disabled>${T.png}</button>
-      <button class="ohlc-primary" id="ohlc-save" disabled>${T.save}</button>
-      <button class="ohlc-primary" id="ohlc-save-search" disabled>${T.saveSearch}</button>
       <button class="ohlc-danger" id="ohlc-close">${T.close}</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, points: [], datasetId: null, running: false, imgKey: null };
+  const state = { img: null, result: null, templates: null, points: [], running: false, imgKey: null };
 
   /* remember the label fields, the panel is closed between uploads */
   const FORM = 'chartdna_ohlc_form';
@@ -159,7 +151,6 @@
   /* ------------------------------------------------------------ image input */
   const drop = $('ohlc-drop');
   drop.addEventListener('click', () => $('ohlc-file').click());
-  $('ohlc-pick').addEventListener('click', (e) => { e.stopPropagation(); $('ohlc-file').click(); });
   $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
   ['dragover', 'dragenter'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('ohlc-over'); }));
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('ohlc-over')));
@@ -213,15 +204,6 @@
     cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
     setView('orig');
   }
-  $('ohlc-grab').addEventListener('click', () => {
-    const imgs = Array.prototype.slice.call(document.querySelectorAll('img'))
-      .filter((i) => /^(blob:|data:)/.test(i.currentSrc || i.src) && i.naturalWidth > 260);
-    if (!imgs.length) { status('تصویری که داخل برنامه آپلود کرده‌اید پیدا نشد؛ فایل را همین‌جا انتخاب کنید.', 'warn'); return; }
-    imgs.sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight);
-    state.img = imgs[0];
-    drawOriginal();
-    status('تصویر از پنل برنامه برداشته شد: ' + imgs[0].naturalWidth + '×' + imgs[0].naturalHeight + ' پیکسل.');
-  });
 
   /* --------------------------------------------------- manual axis anchors */
   $('ohlc-orig').addEventListener('click', (e) => {
@@ -278,7 +260,7 @@
     if (state.running) return null;
     state.running = true;
     status(T.busy);
-    ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].forEach((id) => { $(id).disabled = true; });
+    ['ohlc-csv', 'ohlc-png'].forEach((id) => { $(id).disabled = true; });
     await new Promise((r) => setTimeout(r, 30));
     try {
       if (!state.templates) state.templates = window.ChartDNACVTemplateCache || (window.ChartDNACVTemplateCache = window.ChartDNACV.canvasTemplates(makeCtx));
@@ -299,8 +281,8 @@
       const ms = Math.round(performance.now() - t0);
       report(res, ms);
       try { drawResults(res); } catch (e) { console.warn('preview rendering failed:', e); }
-      ['ohlc-csv', 'ohlc-png', 'ohlc-save', 'ohlc-save-search'].forEach((id) => { $(id).disabled = !(res.calibration && res.calibration.detected); });
-      if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms) + '\nمحور قیمت خوانده نشد؛ مقادیر عددی ساخته نمی‌شوند. برای ثبت دیتاست، ردیف‌های مرجع را دستی کلیک کنید و دوباره استخراج کنید.', 'warn');
+      ['ohlc-csv', 'ohlc-png'].forEach((id) => { $(id).disabled = !(res.calibration && res.calibration.detected); });
+      if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms) + '\nمحور قیمت خوانده نشد؛ مقادیر عددی ساخته نمی‌شوند. ردیف‌های مرجع را دستی اضافه کنید و دوباره استخراج کنید.', 'warn');
       state.lastImage = forced || state.imgKey || null;
       return res;
     } catch (err) {
@@ -424,116 +406,6 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
-  /* ------------------------------------------------- register in Chart DNA */
-  const DB = 'ChartDNA_Storage', VER = 1, STORE = 'market_datasets', SEL = 'chartdna_selected_dataset_ids';
-  const PAT = 'chartdna_saved_patterns', PAT_PENDING = 'chartdna_ohlc_pending_pattern';
-  const norm = (pts) => { const lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts); return hi === lo ? pts.map(() => 0) : pts.map((v) => 2 * ((v - lo) / (hi - lo)) - 1); };
-  /* The app seeds its pattern library from built-ins on first mount and then
-     persists it in localStorage. Writing before that would clobber the seed,
-     so when the key is not there yet the pattern waits for the next load. */
-  function appendPattern(rec) {
-    let raw = null;
-    try { raw = localStorage.getItem(PAT); } catch (e) { return 'no-storage'; }
-    if (!raw) { try { sessionStorage.setItem(PAT_PENDING, JSON.stringify(rec)); } catch (e) { } return 'queued-for-next-load'; }
-    let list;
-    try { list = JSON.parse(raw); } catch (e) { return 'unreadable'; }
-    if (!Array.isArray(list)) return 'unreadable';
-    let replaced = false;
-    for (let i = 0; i < list.length; i++) {
-      const p = list[i];
-      if (!p || p.id !== rec.id) continue;
-      if ((p.points || []).join() === (rec.points || []).join()) return 'already-there';
-      list[i] = rec; replaced = true;              /* only ever touch our own entries */
-    }
-    if (!replaced) list.push(rec);
-    /* keep our own auto-extracted entries bounded: the app's library is the user's */
-    const mine = list.map((p, i) => (p && String(p.id).indexOf('custom_dna_img_') === 0 ? i : -1)).filter((i) => i >= 0);
-    if (mine.length > 24) mine.slice(0, mine.length - 24).reverse().forEach((i) => list.splice(i, 1));
-    try { localStorage.setItem(PAT, JSON.stringify(list)); } catch (e) { return 'quota'; }
-    try { sessionStorage.removeItem(PAT_PENDING); } catch (e) { }
-    return replaced ? 'replaced' : 'added';
-  }
-  (function flushPendingPattern() {
-    let pend = null;
-    try { pend = sessionStorage.getItem(PAT_PENDING); if (pend) sessionStorage.removeItem(PAT_PENDING); } catch (e) { }
-    if (!pend) return;
-    try {
-      const rec = JSON.parse(pend);
-      const res = appendPattern(rec);
-      if (res === 'queued-for-next-load') { sessionStorage.setItem(PAT_PENDING, pend); }
-      else if (window.__ohlcLog) window.__ohlcLog('pending pattern: ' + res);
-    } catch (e) { }
-  })();
-  function openDb() {
-    return new Promise((res, rej) => {
-      const o = indexedDB.open(DB, VER);
-      o.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('metadata')) db.createObjectStore('metadata', { keyPath: 'key' });
-      };
-      o.onsuccess = () => res(o.result);
-      o.onerror = () => rej(o.error || new Error('IndexedDB failed'));
-    });
-  }
-  async function saveDataset(andSearch, opts) {
-    opts = opts || {};
-    const quiet = !!opts.silent;
-    const say = (m, k) => { if (!quiet) status(m, k); else console.info('[ohlc]', m); };
-    const res = state.result;
-    if (!res || !res.calibration || !res.calibration.detected) { say('اول محور قیمت را بخوانید (یا دستی کالیبره کنید)؛ بدون مقادیر عددی دیتاستی ساخته نمی‌شود.', 'warn'); return { error: 'no-calibration' }; }
-    const wantPattern = opts.pattern === undefined ? $('ohlc-opt-pattern').checked : !!opts.pattern;
-    const replaceSel = opts.replace === undefined ? $('ohlc-opt-replace').checked : !!opts.replace;
-    const name = ($('ohlc-symbol').value || 'Image') + ' ' + $('ohlc-tf').value + ' (from image)' + (opts.nameSuffix || '');
-    const id = opts.id || ('img-' + Date.now().toString(36));
-    const ds = window.ChartDNACV.toDataset(res, {
-      id, name, symbol: ($('ohlc-symbol').value || 'IMAGE').toUpperCase(), timeframe: $('ohlc-tf').value,
-      note: 'بازسازی از تصویر (' + res.quality.meanConfidence + ' میانگین اطمینان، ' + res.bars.length + ' کندل) — ' + (res.calibration.modelChoice || '')
-    });
-    try {
-      const db = await openDb();
-      await new Promise((r2, j2) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(ds);
-        tx.oncomplete = r2; tx.onerror = () => j2(tx.error);
-      });
-      db.close();
-      let sel = [id];
-      if (!replaceSel) {
-        try {
-          const cur = JSON.parse(localStorage.getItem(SEL) || '[]');
-          if (Array.isArray(cur) && cur.length) sel = cur.indexOf(id) < 0 ? cur.concat([id]) : cur;
-        } catch (e) { }
-      }
-      try { localStorage.setItem(SEL, JSON.stringify(sel)); } catch (e) { console.warn(e); }
-      let patMsg = '';
-      if (wantPattern) {
-        const closes = (opts.patternPoints && opts.patternPoints.length >= 5) ? opts.patternPoints.slice() : ds.candles.map((c) => c.close);
-        if (closes.length >= 5) {
-          const pat = {
-            id: 'custom_dna_img_' + id, name: name, category: 'Image extraction',
-            createdAt: new Date().toISOString().slice(0, 10),
-            points: closes, normalizedPoints: norm(closes),
-            notes: 'سری بسته‌شوندهٔ استخراج‌شده از تصویر (' + ds.candles.length + ' کندل، میانگین اطمینان ' + res.quality.meanConfidence + ') — ' + (res.calibration.modelChoice || '')
-          };
-          const r = appendPattern(pat);
-          var patState = r;
-          patMsg = '\nالگو در کتابخانهٔ DNA: ' + ({ 'added': 'اضافه شد ✓', 'already-there': 'از قبل موجود بود', 'replaced': 'به‌روزرسانی شد', 'queued-for-next-load': 'در صف (بعد از بارگذاری بعدی اضافه می‌شود)', 'quota': 'ذخیره نشد (حافظهٔ مرورگر پر است)', 'unreadable': 'خوانده نشد', 'no-storage': 'غیرقابل دسترس' }[r] || r);
-        }
-      }
-      if (andSearch) { try { sessionStorage.setItem('chartdna_ohlc_autosearch', id); } catch (e) { } }
-      state.datasetId = id;
-      say('دیتاست «' + name + '» ذخیره شد و ' + (replaceSel ? 'تنها دیتاست انتخاب‌شده است' : 'به دیتاست‌های انتخاب‌شده اضافه شد') + patMsg + (andSearch ? '\nصفحه بارگذاری مجدد می‌شود و جستجو اجرا خواهد شد…' : ''), 'ok');
-      if (andSearch && opts.reload !== false) setTimeout(reloadPage, 350);
-      return { id, name, pattern: patState || 'skipped', dataset: ds };
-    } catch (err) {
-      say('ذخیره در پایگاه محلی برنامه ناموفق بود: ' + (err && err.message ? err.message : err), 'err');
-      return { error: String(err && err.message || err) };
-    }
-  }
-  /* a seam the tests can drive; browsers get the plain reload */
-  function reloadPage() { (typeof window.__chartDnaReload === 'function' ? window.__chartDnaReload : location.reload.bind(location))(); }
-
   /* ------------------------------------------------- the deck's import key leads here
    * The recorder-like strip in the app's sidebar (#remote-control-deck inside
    * #sidebar-controls) carries «ورود تصویر چارت» — #btn-import-image, a picture icon and
@@ -585,7 +457,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 8,
+    version: 9,
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,
@@ -595,45 +467,11 @@
     sigOf,
     useImage: (src) => new Promise((done) => { loadImage(src, () => done(state.img)); }),
     run: (key) => run(key),
-    saveDataset: (andSearch, opts) => saveDataset(andSearch, opts),
     toCSV: () => window.ChartDNACV.toCSV(state.result),
-    reload: reloadPage,
     open: () => show(true),
     onPickedImage: (url) => onPickedImage(url),
     deckKey: deckKey,
     deckTakeover: () => takeoverOn()
   };
-
-  $('ohlc-save').addEventListener('click', () => saveDataset(false));
-  $('ohlc-save-search').addEventListener('click', () => saveDataset(true));
-
-  /* after a reload requested by "save + search": select the dataset view and
-     click the app's own search button once it exists */
-  (function autoSearch() {
-    let want = null;
-    try { want = sessionStorage.getItem('chartdna_ohlc_autosearch'); if (want) sessionStorage.removeItem('chartdna_ohlc_autosearch'); } catch (e) { }
-    if (!want) return;
-    let tries = 0;
-    const tick = () => {
-      tries++;
-      const btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-      const root = document.getElementById('root') || document.body;
-      const appReady = root && root.children.length > 0;
-      const hit = appReady ? btns.filter((b) => {
-        const t = (b.textContent || '').trim();
-        if (!/جستجو/.test(t) || /جستجو و فیلتر/.test(t) || t.length > 26) return false;
-        if (b.closest && b.closest('#ohlc-modal')) return false;      // never our own button
-        return !b.disabled && b.isConnected !== false;
-      }) : [];
-      if (hit.length) { hit[0].click(); status2('جستجوی الگو روی دیتاست استخراج‌شده اجرا شد (' + want + ').'); return; }
-      if (tries < 120) setTimeout(tick, 500);
-    };
-    const wait = () => (document.body ? tick() : setTimeout(wait, 300));
-    setTimeout(wait, 1800);
-    function status2(msg) {
-      const b = document.getElementById('ohlc-status');
-      if (b) { show(true); b.textContent = msg + '\n(دیتاست ' + want + ' به‌عنوان تنها دیتاست انتخاب‌شده بارگذاری شد.)'; }
-    }
-  })();
 
 })();

@@ -36,7 +36,10 @@
     'کارت‌های آماری تحلیل الگو', 'Pattern Stats & Targets'
   ];
   const CARD = 'ohlc-auto-card';
-  const STALE = ['ohlc-auto-card', 'ohlc-tool', 'ohlc-open'];   /* leftovers of old builds */
+  /* leftovers of old builds: the injected card, the floating opener, and the four
+     keys that were just deleted out of the panel together with their function */
+  const STALE = ['ohlc-auto-card', 'ohlc-tool', 'ohlc-open', 'ohlc-pick', 'ohlc-grab',
+    'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace'];
   const MAX_DROPS = 5;                    /* an old build re-adds what we take away: bounded */
   const drops = Object.create(null);
   const OUR_KEYS = /^chartdna_ohlc_/;

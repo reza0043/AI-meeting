@@ -210,9 +210,20 @@ const ok = (name, cond, info) => {
   const stale2 = doc.createElement('div');
   stale2.id = 'ohlc-auto-card';
   doc.getElementById('chart-dna-app').appendChild(stale2);
+  /* the four panel keys that were deleted from the tool: a cached build still
+     puts them in the modal, so the sweep takes them out of the page as well */
+  ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern'].forEach((id) => {
+    const b = doc.createElement('button');
+    b.id = id; b.textContent = 'دکمهٔ قدیمی';
+    doc.getElementById('chart-dna-app').appendChild(b);
+  });
   await sleep(900);
   ok('a leftover card that comes back is removed again, with a bound on the fight',
     !doc.getElementById('ohlc-auto-card') && (win.ChartDnaUiTrim.drops()['ohlc-auto-card'] || 0) >= 2,
+    'drops=' + JSON.stringify(win.ChartDnaUiTrim.drops()));
+  ok('the deleted panel keys are swept out of a stale build too',
+    ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern'].every((id) => !doc.getElementById(id)) &&
+    ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search'].every((id) => (win.ChartDnaUiTrim.drops()[id] || 0) >= 1),
     'drops=' + JSON.stringify(win.ChartDnaUiTrim.drops()));
 
   ok('a panel the app renders later is hidden too (no id, matched by title)',
