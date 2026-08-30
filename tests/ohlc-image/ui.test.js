@@ -207,11 +207,17 @@ const ok = (name, cond, info) => {
   ok('no explanation sits under the name', !$('ohlc-card').querySelector('h2 + .ohlc-muted') &&
     h2.nextElementSibling.className.indexOf('ohlc-muted') < 0,
     'next sibling is <' + h2.nextElementSibling.tagName + ' class="' + h2.nextElementSibling.className + '">');
+  ok('the card is one column now: the row of keys, the picture, the table',
+    !!h2.nextElementSibling.querySelector('#ohlc-bar') && !$('ohlc-card').querySelector('.ohlc-grid') &&
+    !$('ohlc-card').querySelector('.ohlc-box'),
+    'children of the card: ' + Array.prototype.slice.call($('ohlc-card').children).map((e) => e.id || e.className).join(' · '));
   ok('and the old wording is nowhere in the panel',
     !$('ohlc-card').textContent.match(/بازسازی OHLC از اسکرین|computer vision|حافظهٔ مدل/), 'clean');
   const GONE = ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace', 'ohlc-close'];
-  ok('the pick / grab / save / save-and-search keys are gone, and their options with them',
-    GONE.every((id) => !$(id)), GONE.filter((id) => $(id)).join(',') || 'none of them in the DOM');
+  const PANEL = ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0', 'ohlc-ref-row', 'ohlc-ref-price',
+    'ohlc-ref-add', 'ohlc-ref-clear', 'ohlc-points'];
+  ok('the pick / grab / save keys are gone, and with them the label, calibration and output panels',
+    GONE.concat(PANEL).every((id) => !$(id)), GONE.concat(PANEL).filter((id) => $(id)).join(',') || 'none of them in the DOM');
   ok('the bottom row keeps only the two downloads; «بستن» moved up as the sixth key',
     !!$('ohlc-run') && !!$('ohlc-csv') && !!$('ohlc-png') && !$('ohlc-close') &&
     Array.prototype.slice.call($('ohlc-card').querySelector('.ohlc-actions').children).map((b) => b.id).join(',') === 'ohlc-csv,ohlc-png',
@@ -350,7 +356,6 @@ const ok = (name, cond, info) => {
 
   let searchClicks = 0;
   $('app-search').addEventListener('click', () => searchClicks++);
-  $('ohlc-d0').value = '2026-08-14'; $('ohlc-d1').value = '2026-08-29';
   $('ohlc-run').click();
   for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
   const st = txt('ohlc-status');
@@ -362,7 +367,8 @@ const ok = (name, cond, info) => {
     pixels: rep.pixels, ms: rep.durationMs }));
   ok('the reference chart yields its 296 candles', nBars === (SIZE && SIZE.bars ? SIZE.bars : 296), nBars + ' bars, missing ' + R.missing);
   ok('candle grid pitch reported', g.pitch > 2 && g.pitch < 40, 'pitch ' + g.pitch + ' px');
-  ok('calibration equation in the status text', /price = /.test(st) && !!cal.equation, cal.equation);
+  ok('the axis calibration is measured and stays in the report, not on the card',
+    !!cal.equation && /محور قیمت/.test(st) && !/price = /.test(st), cal.equation || 'no equation');
   ok('axis anchors listed (>= 3)', (cal.refs || []).length >= 3, (cal.refs || []).map((x) => x.price + '@' + x.row + '[' + x.source + ']').join('  '));
   ok('regression residual in USD reported', cal.residualUSD > 0 && cal.residualUSD < 0.2, 'RMS ' + cal.residualUSD);
   ok('pixel size in USD reported', cal.usdPerPx > 0 && /پیکسل/.test(st), '1 px = ' + cal.usdPerPx + ' USD');
@@ -370,7 +376,9 @@ const ok = (name, cond, info) => {
     'err ' + (cal.tagCheck && cal.tagCheck.errorUSD) + ' USD');
   ok('manual-review count reported', typeof q.meanConfidence === 'number' && Array.isArray(q.needReview), (q.needReview || []).length + ' flagged, mean conf ' + q.meanConfidence);
   ok('limitation stated in the status text', /محدودیت/.test(st), st.split('\n').slice(-1)[0]);
-  ok('nothing invented: bars without a date source keep Date empty', nBars > 0, st.split('\n').filter((l) => /تاریخ/.test(l)).join(' / ').slice(0, 120) || 'no date line');
+  ok('nothing invented: with no date source at all, no bar gets a date',
+    nBars > 0 && (rep.bars || []).every((b) => !b.date) && R.dateMode === undefined,
+    'dated bars: ' + (rep.bars || []).filter((b) => b.date).length + ' · dateMode=' + R.dateMode);
   ok('both downloads are enabled, and there is no third one', ['ohlc-csv', 'ohlc-png'].every((id) => !$(id).disabled) && !$('ohlc-save'),
     'csv+png live · save gone');
   ok('preview table rendered', ($('ohlc-table').querySelectorAll('tbody tr') || []).length > 0, $('ohlc-table').querySelectorAll('tbody tr').length + ' rows');
@@ -447,41 +455,22 @@ const ok = (name, cond, info) => {
   $('ohlc-drop').dispatchEvent(new win.Event('dragover', { bubbles: true }));
   ok('the upload key highlights on dragover', /ohlc-over/.test($('ohlc-drop').className), $('ohlc-drop').className);
 
-  console.log('2b) typed axis anchor');
-  $('ohlc-ref-row').value = '261'; $('ohlc-ref-price').value = '4600';
-  $('ohlc-ref-add').click();
-  ok('typed anchor appears in the list', /ردیف 261/.test($('ohlc-points').textContent), $('ohlc-points').textContent.trim().replace(/\s+/g, ' ').slice(0, 70));
-
-  /* the click has to land on the letterboxed picture, not on the box around it */
-  const pic = $('ohlc-orig'), savedRect = pic.getBoundingClientRect;
-  pic.getBoundingClientRect = () => ({ left: 100, top: 50, width: 1000, height: 400, right: 1100, bottom: 450, x: 100, y: 50 });
-  const fit = Math.min(1000 / pic.width, 400 / pic.height);
-  const offX = (1000 - pic.width * fit) / 2, offY = (400 - pic.height * fit) / 2;
-  const imgH = win.ChartDnaOhlc.image().naturalHeight;
-  const wantRow = Math.round(300 * (imgH / pic.height));
-  const ptsBefore = ($('ohlc-points').textContent.match(/ردیف/g) || []).length;
-  pic.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 100 + offX + 700 * fit, clientY: 50 + offY + 300 * fit }));
-  ok('a click on the picture adds the row it points at, through the letterbox math',
-    new RegExp('ردیف ' + wantRow).test($('ohlc-points').textContent),
-    'want row ' + wantRow + ' from (700,300) of a ' + pic.width + '×' + pic.height + ' frame shown in a 1000×400 box');
-  pic.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 100 + offX / 2, clientY: 50 + offY / 2 }));
-  ok('a click on the empty band beside the picture is refused, nothing is invented',
-    /حاشیهٔ کادر/.test($('ohlc-status').textContent) &&
-    ($('ohlc-points').textContent.match(/ردیف/g) || []).length === ptsBefore + 1,
-    'points: ' + ptsBefore + ' → ' + ($('ohlc-points').textContent.match(/ردیف/g) || []).length);
-  pic.getBoundingClientRect = savedRect;
-  $('ohlc-run').click();
-  for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
-  const cal2 = ((win.__ohlcReport || {}).result || {}).calibration || {};
-  ok('typed anchor joins the regression set', (cal2.refs || []).some((r) => r.source === 'manual-typed'),
-    (cal2.refs || []).map((r) => r.price + '@' + r.row + '[' + r.source + ']').join('  '));
-  ok('calibration stays tight with the extra anchor', cal2.residualUSD < 0.05 && ((win.__ohlcReport || {}).bars || []).length === nBars,
-    'RMS ' + cal2.residualUSD + ', ' + (((win.__ohlcReport || {}).result || {}).candles) + ' candles');
-  $('ohlc-points').querySelector('button[data-del]').click();
-  ok('anchor can be removed again', !/ردیف 261/.test($('ohlc-points').textContent));
-  $('ohlc-run').click();
-  for (let i = 0; i < 120 && /پردازش/.test(txt('ohlc-status')); i++) await sleep(250);
-  ok('back to axis labels only', !((win.__ohlcReport || {}).result.calibration.refs || []).some((r) => r.source === 'manual-typed'), 'refs: ' + win.__ohlcReport.result.calibration.refs.map(r => r.price + '@' + r.row).join(' '));
+  console.log('2b) the label, calibration and output panels are gone, with their function');
+  /* ourSrc — the text of the extractor — was read in section 1 */
+  ok('not one control of those panels is in the DOM', PANEL.every((id) => !$(id)), PANEL.filter((id) => $(id)).join(',') || 'none');
+  const cardTxt = $('ohlc-card').textContent;
+  ok('their headings and their boxes are gone too',
+    !/برچسب دیتاست|کالیبراسیون محور قیمت|خروجی/.test(cardTxt) && !$('ohlc-card').querySelector('.ohlc-box'),
+    'no box, no heading on the card');
+  ok('and the code behind them is deleted, not left idle',
+    !/applyDates|state\.points|renderPoints|extraRefs|chartdna_ohlc_form|calibNote|contentBox|ohlc-box|ohlc-grid|ohlc-muted/.test(ourSrc),
+    'no date path, anchors, form storage or box styling left in the file');
+  ok('a click on the picture collects nothing any more',
+    ($('ohlc-orig').dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 300, clientY: 200 })), true) &&
+    !$('ohlc-points') && /کندل‌ها:/.test(txt('ohlc-status')),
+    txt('ohlc-status').split('\n')[0]);
+  ok('one short line of feedback is all the card shows',
+    txt('ohlc-status').split('\n').length <= 4, txt('ohlc-status').split('\n').length + ' lines');
 
   console.log('3) CSV download');
   const captured = [];
@@ -502,9 +491,8 @@ const ok = (name, cond, info) => {
   ok('row count equals the candle numbers', data.every((l, i) => +l.split(',')[0] === i + 1), 'numbered 1..' + data.length);
   const nums = (lines[1] || '').split(',');
   ok('row values are numeric and H>=body>=L', ['', 'Bullish', 'Bearish'].indexOf(nums[7]) >= 0 && parseFloat(nums[3]) <= parseFloat(nums[4]) && parseFloat(nums[5]) <= Math.min(parseFloat(nums[3]), parseFloat(nums[6])), 'row 1: ' + lines[1]);
-  ok('dates come from the anchors the user typed', /,2026-08-14,/.test(lines[1]), lines[1]);
-  ok('every row got a date between the two anchors', data.filter((l) => /,2026-\d\d-\d\d,/.test(l)).length === nBars,
-    data.filter((l) => /,2026-\d\d-\d\d,/.test(l)).length + ' dated rows');
+  ok('Date stays empty — nothing was typed in and nothing is invented',
+    data.every((l) => l.split(',')[1] === ''), 'row 1: ' + lines[1]);
   ok('Time column stays empty', (lines[50] || '').split(',')[2] === '', 'row 50: ' + lines[50]);
 
   console.log('3b) «تأیید» — the sixth key closes the window and stays read-only');
@@ -539,7 +527,8 @@ const ok = (name, cond, info) => {
     lsKeys.indexOf('chartdna_selected_dataset_ids') < 0 && lsKeys.indexOf('chartdna_saved_patterns') < 0,
     'localStorage: ' + lsKeys.join(',') );
   const ours = lsKeys.filter((k) => /^chartdna_/.test(k));
-  ok('at most the typed form is kept, nothing else', ours.every((k) => k === 'chartdna_ohlc_form'), ours.join(',') || 'nothing under chartdna_*');
+  ok('nothing at all is kept under chartdna_*: the label panel stored the form, and it is gone',
+    ours.length === 0, ours.join(',') || 'nothing under chartdna_*');
   ok('no script errors on the page', errors.length === 0, errors.join(' | ') || 'none');
 
   /* a page that loads with the app's own data present must not have it touched */

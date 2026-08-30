@@ -217,6 +217,14 @@ const ok = (name, cond, info) => {
     b.id = id; b.textContent = 'دکمهٔ قدیمی';
     doc.getElementById('chart-dna-app').appendChild(b);
   });
+  /* and the controls of the panels that were just deleted (label / calibration / output) */
+  const PANEL_IDS = ['ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0',
+    'ohlc-ref-row', 'ohlc-ref-price', 'ohlc-ref-add', 'ohlc-ref-clear', 'ohlc-points'];
+  PANEL_IDS.forEach((id) => {
+    const el = doc.createElement(id.indexOf('ref-add') >= 0 || id === 'ohlc-ref-clear' ? 'button' : 'input');
+    el.id = id; el.value = 'قدیمی';
+    doc.getElementById('chart-dna-app').appendChild(el);
+  });
   await sleep(900);
   ok('a leftover card that comes back is removed again, with a bound on the fight',
     !doc.getElementById('ohlc-auto-card') && (win.ChartDnaUiTrim.drops()['ohlc-auto-card'] || 0) >= 2,
@@ -225,6 +233,10 @@ const ok = (name, cond, info) => {
     ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern'].every((id) => !doc.getElementById(id)) &&
     ['ohlc-pick', 'ohlc-grab', 'ohlc-save', 'ohlc-save-search'].every((id) => (win.ChartDnaUiTrim.drops()[id] || 0) >= 1),
     'drops=' + JSON.stringify(win.ChartDnaUiTrim.drops()));
+  ok('the label / calibration / output controls of a stale build are swept the same way',
+    PANEL_IDS.every((id) => !doc.getElementById(id)) &&
+    PANEL_IDS.every((id) => (win.ChartDnaUiTrim.drops()[id] || 0) >= 1),
+    'drops=' + PANEL_IDS.map((id) => win.ChartDnaUiTrim.drops()[id] || 0).join(','));
 
   ok('a panel the app renders later is hidden too (no id, matched by title)',
     fresh.style.display === 'none' && win.ChartDnaUiTrim.hidden() === 3, 'hidden=' + win.ChartDnaUiTrim.hidden());

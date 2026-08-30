@@ -36,10 +36,13 @@
     'کارت‌های آماری تحلیل الگو', 'Pattern Stats & Targets'
   ];
   const CARD = 'ohlc-auto-card';
-  /* leftovers of old builds: the injected card, the floating opener, and the four
-     keys that were just deleted out of the panel together with their function */
+  /* leftovers of old builds: the injected card, the floating opener, the four keys that
+     were deleted with their function, and the controls of the three panels that are gone
+     now — the dataset label, the price-axis calibration and the output box */
   const STALE = ['ohlc-auto-card', 'ohlc-tool', 'ohlc-open', 'ohlc-pick', 'ohlc-grab',
-    'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace'];
+    'ohlc-save', 'ohlc-save-search', 'ohlc-opt-pattern', 'ohlc-opt-replace',
+    'ohlc-symbol', 'ohlc-tf', 'ohlc-d0', 'ohlc-d1', 'ohlc-t0',
+    'ohlc-ref-row', 'ohlc-ref-price', 'ohlc-ref-add', 'ohlc-ref-clear', 'ohlc-points'];
   const MAX_DROPS = 5;                    /* an old build re-adds what we take away: bounded */
   const drops = Object.create(null);
   const OUR_KEYS = /^chartdna_ohlc_/;
@@ -437,7 +440,7 @@
   if (document.body) run(); else document.addEventListener('DOMContentLoaded', run);
 
   window.ChartDnaUiTrim = {
-    version: 3,
+    version: 4,
     titles: TITLES.slice(),
     ids: IDS.slice(),
     cropText: CROP_TEXT.slice(),
