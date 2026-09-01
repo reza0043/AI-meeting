@@ -462,9 +462,23 @@
     if (!ovOn()) { removeOverlay(); return false; }
     const card = cropCard(), dat = state.ovData;
     if (dat && dat.frame) shapeStage(dat.frame);        /* the card takes the window's shape first */
-    const stage = card ? (card.querySelector('canvas') || cropStageBox() || card) : null;
-    const r = stage ? stage.getBoundingClientRect() : null;
-    if (!r || !dat || !dat.candles || !dat.candles.length || !(r.width > 60) || !(r.height > 40)) { cv.style.display = 'none'; return false; }
+    /* the first box that really has a size on screen decides where the chart sits: a
+       hidden canvas measures 0×0 and must not silence the chart (the v29 blank card —
+       the crop canvas is display:none while no picture is loaded) */
+    let r = null;
+    if (card) {
+      const cand = [];
+      const cvs = card.querySelectorAll('canvas');
+      for (let i = 0; i < cvs.length; i++) if (cvs[i].id !== OV) cand.push(cvs[i]);
+      const sb = cropStageBox();
+      if (sb) cand.push(sb);
+      cand.push(card);
+      for (let i = 0; i < cand.length; i++) {
+        const q = cand[i].getBoundingClientRect();
+        if (q && q.width > 60 && q.height > 40) { r = q; break; }
+      }
+    }
+    if (!r || !dat || !dat.candles || !dat.candles.length) { cv.style.display = 'none'; return false; }
     /* the window's picture size is the ceiling: the chart takes exactly that frame,
        shrinks with the card when the card is smaller, and never grows past it */
     const stW = Math.round(r.width), stH = Math.round(r.height);
@@ -538,10 +552,11 @@
     }
     return paintOverlay();
   }
-  /* a chart confirmed before this load: back on the card as soon as React has built it */
+  /* a chart confirmed before this load: back on the card as soon as React has built it —
+     a fast boot keeps the big-then-small flash of the card as short as it can be */
   (function remountStoredOverlay() {
     if (!state.ovData) return;
-    const boot = setInterval(() => { if (mountOverlay()) clearInterval(boot); }, 800);
+    const boot = setInterval(() => { if (mountOverlay()) clearInterval(boot); }, 150);
     setTimeout(() => clearInterval(boot), 30000);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mountOverlay());
   })();
