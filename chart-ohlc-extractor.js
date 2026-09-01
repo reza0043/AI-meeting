@@ -102,7 +102,7 @@
         ${keyHtml('data-view="chart" type="button" aria-selected="true"', ICO.bars, 'کندل‌های بازسازی‌شده')}
         ${keyHtml('data-view="orig" type="button" aria-selected="false"', ICO.eye, 'تصویر اصلی')}
         ${keyHtml('data-view="ann" type="button" aria-selected="false"', ICO.cross, 'تصویر با مارک‌ها')}
-        ${keyHtml('id="ohlc-confirm" type="button" disabled', ICO.check, T.confirm)}
+        ${keyHtml('id="ohlc-confirm" type="button"', ICO.check, T.confirm)}
       </div>
       <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
       <canvas id="ohlc-chart"></canvas>
@@ -120,9 +120,9 @@
   /* ------------------------------------------------------------ open/close */
   const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
 
-  /* the sixth key: «تأیید» — what was measured is accepted, the window closes and the
-     user is back on the app's first page. Nothing is written into the app: the candles,
-     the CSV and the marked picture stay here, exactly as before */
+  /* the sixth key: «تأیید» — always armed. With a measurement it hands the candles to
+     the engine on the way out; with nothing in the window (no picture, no numbers) it
+     simply closes and the user is back on the app's first page, empty-handed and fine. */
   /* -------------------------------------------- handing the measurement to the engine
    * «تأیید» closes the window, and on the way out it gives the app what was measured:
    * one dataset in the app's own store carrying every field the picture yielded (the four
@@ -620,7 +620,7 @@
         'چارت کندلیِ همین اندازه‌گیری، هم‌قاب با همین پنجره، روی «محیط الگو» نشسته است. ' +
         'پنجره بسته شد و به صفحهٔ برنامه برگشتید. با همان کلید «ورود تصویر چارت» می‌توانید ادامه دهید.');
     } else {
-      status('چیزی استخراج نشده بود؛ پنجره بسته شد.');
+      status('چیزی برای تحویل نبود؛ پنجره خالی بسته شد و به صفحهٔ برنامه برگشتید.');
     }
     show(false);
     return has;
@@ -671,7 +671,6 @@
       state.img = im;
       state.imgKey = sigOf(src);
       state.confirmedKey = null;
-      $('ohlc-confirm').disabled = true;
       $('ohlc-table').innerHTML = '';
       $('ohlc-table-card').classList.add('ohlc-hidden');
       try { URL.revokeObjectURL(src); } catch (e) { /* not a blob url */ }
@@ -771,7 +770,6 @@
     const b = document.createElement('canvas');
     try { window.ChartDNACV.renderAnnotated(b, state.img, res); paintInto($('ohlc-ann'), b); } catch (e) { console.warn(e); }
     setView('chart');
-    $('ohlc-confirm').disabled = !(res.bars && res.bars.length);
     const rows = res.bars.slice(0, 14).concat(res.bars.length > 16 ? [{ candle: '…' }] : []).concat(res.bars.slice(-4));
     $('ohlc-table').innerHTML = '<table class="ohlc-table"><thead><tr><th>#</th><th>Date</th><th>O</th><th>H</th><th>L</th><th>C</th><th class="ohlc-dir">Dir</th><th>Conf</th></tr></thead><tbody>' +
       rows.map((b) => b.candle === '…' ? '<tr><td colspan=8 class="ohlc-dir">…</td></tr>'

@@ -238,8 +238,15 @@ const ok = (name, cond, info) => {
     'children of the card: ' + Array.prototype.slice.call($('ohlc-card').children).map((e) => e.id || e.className).join(' · '));
   ok('the image still enters through the upload key (or a paste)', !!$('ohlc-drop') && !!$('ohlc-file'),
     'icon key + its file input');
-  ok('«تأیید» starts out disabled: there is nothing to confirm yet', $('ohlc-confirm').disabled === true,
-    'disabled=' + $('ohlc-confirm').disabled);
+  ok('«تأیید» is armed from the start — with nothing inside it just closes the window',
+    $('ohlc-confirm').disabled === false && (function () {
+      win.ChartDnaOhlc.open();
+      const wasOpen = $('ohlc-modal').style.display === 'flex';
+      $('ohlc-confirm').dispatchEvent(new win.Event('click', { bubbles: true }));
+      return wasOpen && $('ohlc-modal').style.display === 'none' &&
+        win.localStorage.getItem('chartdna_px_overlay') === null && !win.__ohlcWrite;
+    })(),
+    'disabled=' + $('ohlc-confirm').disabled + ' modal=' + $('ohlc-modal').style.display);
   ok('the connection box is off the card', !/اتصال به موتور/.test($('ohlc-card').textContent), 'no such heading');
   ok('and nothing of ours can be called to write into the app',
     typeof win.ChartDnaOhlc.saveDataset === 'undefined' && typeof win.ChartDnaOhlc.reload === 'undefined',
@@ -594,7 +601,7 @@ const ok = (name, cond, info) => {
   const appCv = $('app-canvas');
   if (appCv) appCv.getBoundingClientRect = () => ({ left: 30, top: 50, width: 600, height: 300, right: 630, bottom: 350, x: 30, y: 50 });
   const ck = $('ohlc-confirm');
-  ok('the confirm key is armed only once something was extracted', ck.disabled === false, 'disabled=' + ck.disabled);
+  ok('the confirm key is armed here too — it never disarms', ck.disabled === false, 'disabled=' + ck.disabled);
   win.ChartDnaOhlc.open(); await sleep(20);
   ok('the window is open before the confirm', $('ohlc-modal').style.display === 'flex', 'display=' + $('ohlc-modal').style.display);
   ck.dispatchEvent(new win.Event('click', { bubbles: true }));
