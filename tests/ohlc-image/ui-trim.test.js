@@ -301,9 +301,10 @@ const ok = (name, cond, info) => {
   console.log('2) the leftovers are swept, the user data is not');
   const pats = JSON.parse(win.localStorage.getItem('chartdna_saved_patterns') || '[]');
   ok('our patterns are out of the library, the user\'s stays',
-    pats.length === 3 && pats[0].id === 'pat-user', pats.map((p) => p.name).join(' | '));
-  ok('the records a confirmation writes today are left alone by the sweep',
-    pats.some((p) => p.id === 'custom_dna_px_pxrec-aa11') && pats.some((p) => /_trend$/.test(p.id)),
+    pats.length === 2 && pats[0].id === 'pat-user', pats.map((p) => p.name).join(' | '));
+  ok('the closes record stays; the old _trend record is swept once, with the flag set',
+    pats.some((p) => p.id === 'custom_dna_px_pxrec-aa11') && !pats.some((p) => /_trend$/.test(p.id)) &&
+    !!win.localStorage.getItem('chartdna_px_trend_swept'),
     pats.map((p) => p.id).join(' | '));
   ok('our dataset is deleted from the app store', log.deleted.length === 1 && log.deleted[0] === 'img-882827-1t1fl8c',
     'deleted: ' + JSON.stringify(log.deleted));

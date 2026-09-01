@@ -1,13 +1,14 @@
 /* Chart DNA — «ورود تصویر» (UI layer)
  * Runs the pixel-measurement engine (chart-ohlc-engine.js) on a chart
- * screenshot and shows what was measured: the reconstructed candles, the table
- * of the numbers and the trend line fitted through their closes.
+ * screenshot and shows what was measured: the reconstructed candles and the table
+ * of the numbers. The trend line and everything computed for it were removed in v28.
  * The window is named after what it is for: an image goes in, candles come out.
  * Nothing is downloaded and no picture leaves the page. «تأیید» hands the
  * measurement to the app's own engine — one dataset carrying every field that was
- * read, plus the trend line as a second, separately searchable entry in the pattern
- * library — and paints the reconstructed candlestick chart (trend line on top) over
- * «محیط الگو», keeping it in chartdna_px_overlay so it is back after a reload. The
+ * read, plus the closes series as a searchable entry in the pattern library — and
+ * paints the reconstructed candlestick chart over «محیط الگو» at exactly the shape
+ * and size of this window's picture (the card's stage is reshaped to the same wide
+ * strip), keeping it in chartdna_px_overlay so it is back after a reload. The
  * search itself stays the
  * app's action: this window never presses «جستجو» for the user and never reloads.
  * It has no button of its own: the app's picture-icon key in the recorder-like play
@@ -114,7 +115,7 @@
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, trend: null, write: null, ovData: null };
+  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, write: null, ovData: null, shapedStage: null };
 
   /* ------------------------------------------------------------ open/close */
   const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
@@ -127,14 +128,12 @@
    * one dataset in the app's own store carrying every field the picture yielded (the four
    * prices of each candle, the confidence and the note that explains it, the axis it was
    * read against, the residuals, the price-tag check, the bar grid) and, in the pattern
-   * library, two entries: the closes the engine actually compares, and the trend line
-   * itself as a separate record. Both are then usable as the app's query over all the
-   * symbols and timeframes the user has selected, with the app's own «جستجو».
-   * Two honest limits: the app seeds those lists when it mounts, so a record written now
+   * library, one entry: the closes the engine actually compares. It is then usable as
+   * the app's query over all the symbols and timeframes the user has selected, with the
+   * app's own «جستجو».
+   * One honest limit: the app seeds those lists when it mounts, so a record written now
    * shows up on the page's next load (the pending pattern waits in sessionStorage until
-   * then); and a straight line is a degenerate shape to search for — its pearson score
-   * will be near-perfect against any monotonic run — which is why the note on the line
-   * says to search the candle series instead. We never press «جستجو» ourselves.
+   * then). We never press «جستجو» ourselves.
    * The names stay clear of ui-trim's sweep on purpose: the sweep removes the old
    * 'img-…' / «از تصویر» leftovers, not what the user confirms today.
    * localStorage.chartdna_ohlc_write = '0' puts the window back to read-only. */
@@ -195,6 +194,33 @@
     try { localStorage.setItem(PAT, JSON.stringify(list)); } catch (e) { return 'quota'; }
     return replaced ? 'replaced' : 'added';
   }
+  /* v28: the trend-line entries this window used to write (…_trend) are dead weight now —
+     one bounded sweep takes them out of the library and out of the waiting queue; the
+     closes entries and everything of the user's own stay untouched */
+  (function dropTrendPatterns() {
+    const FLAG = 'chartdna_px_trend_swept';
+    try { if (localStorage.getItem(FLAG)) return; } catch (e) { return; }
+    try {
+      const raw = localStorage.getItem(PAT);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const keep = list.filter((p) => !(p && typeof p.id === 'string' && /^custom_dna_px_.*_trend$/.test(p.id)));
+          if (keep.length !== list.length) localStorage.setItem(PAT, JSON.stringify(keep));
+        }
+      }
+    } catch (e) { /* unreadable: nothing is deleted */ }
+    try {
+      const qraw = sessionStorage.getItem(PAT_PENDING);
+      if (qraw) {
+        let q = JSON.parse(qraw);
+        if (!Array.isArray(q)) q = [q];
+        const keep = q.filter((p) => !(p && typeof p.id === 'string' && /_trend$/.test(p.id)));
+        if (keep.length !== q.length) sessionStorage.setItem(PAT_PENDING, JSON.stringify(keep));
+      }
+    } catch (e) { }
+    try { localStorage.setItem(FLAG, new Date().toISOString()); } catch (e) { }
+  })();
   (function flushPendingPatterns() {
     let raw = null;
     try { raw = sessionStorage.getItem(PAT_PENDING); if (raw) sessionStorage.removeItem(PAT_PENDING); } catch (e) { }
@@ -231,18 +257,19 @@
     return sel;
   }
   async function writeExtracted() {
-    const res = state.result, tr = state.trend;
+    const res = state.result;
     if (!writeOn()) return { error: 'switched off by ' + WRITE_OFF };
     if (!res || !res.ok) return { error: 'nothing was extracted' };
     if (!(res.calibration && res.calibration.detected)) return { error: 'the price axis was never read, so there are no numbers to hand over' };
-    if (!tr || !tr.ok) return { error: (tr && tr.error) || 'no trend line was fitted' };
+    const okBars = res.bars.filter((b) => b.status === 'ok' && b.close != null);
+    if (!okBars.length) return { error: 'no measurable candles to hand over' };
     try {
       const id = 'pxrec-' + Date.now().toString(36);
-      const name = 'Pixel reconstruction · ' + tr.n + ' candles';
+      const name = 'Pixel reconstruction · ' + okBars.length + ' candles';
       const q = res.quality || {}, cal = res.calibration;
       const ds = window.ChartDNACV.toDataset(res, {
         id, name, symbol: 'IMAGE', timeframe: '1h',
-        note: 'بازسازی از پیکسل‌ها — ' + res.bars.length + ' کندل، ' + tr.n +
+        note: 'بازسازی از پیکسل‌ها — ' + res.bars.length + ' کندل، ' + okBars.length +
           ' قابل اندازه‌گیری، اطمینان میانگین ' + (q.meanConfidence == null ? '—' : q.meanConfidence) +
           '؛ ' + (cal.modelChoice || '')
       });
@@ -251,18 +278,12 @@
       ds.origin = {
         kind: 'image-window', at: new Date().toISOString(),
         pixels: state.img ? { width: state.img.naturalWidth, height: state.img.naturalHeight } : null,
-        scale: res.scale || 1, candles: res.bars.length, measured: tr.n, incomplete: res.missing,
+        scale: res.scale || 1, candles: res.bars.length, measured: okBars.length, incomplete: res.missing,
         meanConfidence: q.meanConfidence == null ? null : q.meanConfidence,
         needReview: (q.needReview || []).length, usdPerPx: q.usdPerPx,
         axis: { model: cal.modelChoice, equation: cal.equation, residualUSD: cal.residualUSD, refs: cal.refs, tagCheck: cal.tagCheck },
         grid: res.geometry ? { pitch: res.geometry.pitch, x0: res.geometry.x0, bars: res.bars.length } : null,
-        dated: res.bars.some((b) => !!b.date),
-        trend: tr.n, direction: tr.direction, r2: tr.r2, slope: tr.slope
-      };
-      ds.trend = {
-        model: tr.model, n: tr.n, slope: tr.slope, intercept: tr.intercept, r2: tr.r2,
-        start: tr.start, end: tr.end, first: tr.first, last: tr.last,
-        risePct: tr.risePct, direction: tr.direction, unit: 'price per candle'
+        dated: res.bars.some((b) => !!b.date)
       };
       const db = await openDb();
       await new Promise((r2, j2) => {
@@ -274,32 +295,24 @@
       const selected = selectDataset(id);
       const closes = ds.candles.map((c) => c.close);
       const stamp = new Date().toISOString();
-      const base = { id: 'custom_dna_px_' + id, name, category: 'Pixel trend', createdAt: Date.now() };
-      const pCloses = Object.assign({}, base, {
+      const pCloses = {
+        id: 'custom_dna_px_' + id, name, category: 'Pixel closes', createdAt: Date.now(),
         points: closes, normalizedPoints: norm(closes),
-        notes: 'بسته‌شونده‌های ' + tr.n + ' کندلی که از تصویر اندازه‌گیری شد (میانگین اطمینان ' +
+        notes: 'بسته‌شونده‌های ' + okBars.length + ' کندلی که از تصویر اندازه‌گیری شد (میانگین اطمینان ' +
           (q.meanConfidence == null ? '—' : q.meanConfidence) + '، ' + (cal.modelChoice || '') +
-          ') — خط روند: شیب ' + tr.slope + ' در هر کندل، r² = ' + tr.r2 + '، ' + tr.start + ' ← ' + tr.end +
-          ' (' + tr.risePct + '٪). منبع: ' + stamp
-      });
-      const pLine = Object.assign({}, base, {
-        id: base.id + '_trend', name: name + ' · trend line', category: 'Pixel trend · line',
-        points: tr.values, normalizedPoints: norm(tr.values),
-        notes: 'خط کمترین‌مربعات روی همین ' + tr.n + ' بسته‌شونده: y = ' + tr.slope + '·k + ' + tr.intercept +
-          '، r² = ' + tr.r2 + '، ' + tr.start + ' ← ' + tr.end + ' (' + tr.risePct + '٪، ' + tr.direction +
-          '). این بردار یک راستای صاف است؛ به‌عنوان سؤالِ جستجو هر بازای یکنواخت را تقریباً کامل می‌دهد — برای یافتن شکل‌های-history همان «' + name + '» را جستجو کنید.'
-      });
-      const s1 = appendPattern(pCloses), s2 = appendPattern(pLine);
-      if (s1 !== 'queued-for-next-load' || s2 !== 'queued-for-next-load') guardPatterns([pCloses, pLine], 3);
+          '). منبع: ' + stamp
+      };
+      const s1 = appendPattern(pCloses);
+      if (s1 !== 'queued-for-next-load') guardPatterns([pCloses], 3);
       const out = {
         id, name, candles: ds.candles.length, dataset: 'written',
-        patterns: [pCloses.id, pLine.id], patternStates: [s1, s2],
+        patterns: [pCloses.id], patternStates: [s1],
         waitingForLoad: s1 === 'queued-for-next-load', selected, at: stamp
       };
       window.__ohlcWrite = out;
       state.lastWrite = out;
-      status('به موتور داده شد: یک دیتاست با ' + ds.candles.length + ' کندل و تمام یادداشت‌ها + ۲ الگو در کتابخانه' +
-        (out.waitingForLoad ? ' (کتابخانه هنوز ساخته نشده؛ الگوها در بارگذاری بعد ظاهر می‌شوند)' : '') +
+      status('به موتور داده شد: یک دیتاست با ' + ds.candles.length + ' کندل و تمام یادداشت‌ها + الگوی بسته‌شونده‌ها در کتابخانه' +
+        (out.waitingForLoad ? ' (کتابخانه هنوز ساخته نشده؛ الگو در بارگذاری بعد ظاهر می‌شود)' : '') +
         '. در «کتابخانهٔ الگو» با کلید «جستجوی فوری این الگو در تمام نمادها» جستجو می‌شود؛ خودکار جستجو نمی‌کنیم.', 'warn');
       console.info('[ohlc] handed to the engine:', out);
       return out;
@@ -314,12 +327,11 @@
   /* --------------------------------------- the candle chart inside «محیط الگو» window
    * The app owns that card and repaints it, so nothing is put inside it: the chart lives
    * on a canvas of ours that sits exactly over the card, ignores the pointer and follows
-   * the card as it moves. Since v26 it is not a lone trend line any more: the candles the
-   * vision engine measured out of the pixels are drawn as a candlestick chart (wick +
-   * body, the engine's own two colours), the least-squares trend line rides on top, and
-   * the record is kept in localStorage (chartdna_px_overlay — outside every sweep
-   * pattern) so the chart is back on the card after a reload, without touching React.
-   * localStorage.chartdna_trend_overlay = '0' drops it. */
+   * the card as it moves. The candles the vision engine measured out of the pixels are
+   * drawn as a candlestick chart (wick + body, the engine's own two colours) — no trend
+   * line since v28 — and the record is kept in localStorage (chartdna_px_overlay —
+   * outside every sweep pattern) so the chart is back on the card after a reload,
+   * without touching React. localStorage.chartdna_trend_overlay = '0' drops it. */
   const OV = 'ohlc-trend-overlay', OV_OFF = 'chartdna_trend_overlay', OV_STORE = 'chartdna_px_overlay';
   const ovOn = () => { try { return localStorage.getItem(OV_OFF) !== '0'; } catch (e) { return true; } };
   const cropCard = () => document.getElementById('image-cropper-card');
@@ -342,8 +354,8 @@
     return { w: box.w, h: box.h };
   }
   function overlayRecord() {
-    const res = state.result, tr = state.trend;
-    if (!res || !res.ok || !tr || !tr.ok) return null;
+    const res = state.result;
+    if (!res || !res.ok) return null;
     const bars = res.bars.filter((b) => b.status === 'ok' && b.close != null);
     if (!bars.length) return null;
     const candles = bars.map((b) => ({
@@ -353,15 +365,7 @@
       c: b.close,
       up: b.direction === 'Bullish'
     }));
-    return {
-      at: new Date().toISOString(),
-      frame: viewFrame(),
-      candles,
-      trend: {
-        n: tr.n, slope: tr.slope, r2: tr.r2, start: tr.start, end: tr.end,
-        risePct: tr.risePct, direction: tr.direction
-      }
-    };
+    return { at: new Date().toISOString(), frame: viewFrame(), candles };
   }
   function keepOverlayRecord(rec) {
     state.ovData = rec || null;
@@ -381,14 +385,60 @@
   function removeOverlay() {
     const cv = document.getElementById(OV);
     if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
+    unshapeStage();
     if (state.ovWatch) { try { clearInterval(state.ovWatch); } catch (e) { } state.ovWatch = null; }
+  }
+  /* «محیط الگو» must carry the same shape as the «ورود تصویر» window — a wide strip, not
+   * a square. The card's inner stage is React's, so no node is touched: only its height
+   * gets an inline value matching the frame's aspect at the card's width, and the value
+   * is remembered so switching the overlay off puts the stage back as the app made it. */
+  function cropStageBox() {
+    const card = cropCard();
+    if (!card) return null;
+    const kids = card.children || [];
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i].className || '';
+      if (/relative/.test(c) && /flex-1/.test(c)) return kids[i];
+    }
+    const cv = card.querySelector('canvas');
+    if (cv && cv.parentElement && cv.parentElement.parentElement && card.contains(cv.parentElement.parentElement) &&
+      cv.parentElement.parentElement !== card) return cv.parentElement.parentElement;
+    return null;
+  }
+  function shapeStage(fr) {
+    const stage = cropStageBox();
+    if (!stage || !fr || !(fr.w > 40) || !(fr.h > 30)) return null;
+    const w = Math.round(stage.getBoundingClientRect().width);
+    if (!(w > 60)) return null;
+    const want = Math.round(Math.min(w, fr.w) * fr.h / fr.w);
+    if (!stage.__dnaShaped) {
+      stage.__dnaShaped = { height: stage.style.height, minHeight: stage.style.minHeight, maxHeight: stage.style.maxHeight };
+      state.shapedStage = stage;
+    }
+    if (stage.style.height !== want + 'px') {
+      stage.style.height = want + 'px';
+      stage.style.minHeight = '0';
+      stage.style.maxHeight = want + 'px';
+    }
+    return want;
+  }
+  function unshapeStage() {
+    const stage = state.shapedStage || cropStageBox();
+    if (!stage || !stage.__dnaShaped) return false;
+    stage.style.height = stage.__dnaShaped.height;
+    stage.style.minHeight = stage.__dnaShaped.minHeight;
+    stage.style.maxHeight = stage.__dnaShaped.maxHeight;
+    delete stage.__dnaShaped;
+    state.shapedStage = null;
+    return true;
   }
   function paintOverlay() {
     const cv = document.getElementById(OV);
     if (!cv) return false;
     if (!ovOn()) { removeOverlay(); return false; }
     const card = cropCard(), dat = state.ovData;
-    const stage = card ? (card.querySelector('canvas') || card) : null;
+    if (dat && dat.frame) shapeStage(dat.frame);        /* the card takes the window's shape first */
+    const stage = card ? (card.querySelector('canvas') || cropStageBox() || card) : null;
     const r = stage ? stage.getBoundingClientRect() : null;
     if (!r || !dat || !dat.candles || !dat.candles.length || !(r.width > 60) || !(r.height > 40)) { cv.style.display = 'none'; return false; }
     /* the window's picture size is the ceiling: the chart takes exactly that frame,
@@ -405,7 +455,7 @@
     const ctx = cv.getContext('2d');
     if (!ctx) return false;
     ctx.clearRect(0, 0, w, h);
-    const cs = dat.candles, n = cs.length, tr = dat.trend;
+    const cs = dat.candles, n = cs.length;
     let lo = Infinity, hi = -Infinity;
     for (let i = 0; i < n; i++) { if (cs[i].l < lo) lo = cs[i].l; if (cs[i].h > hi) hi = cs[i].h; }
     const padV = (hi - lo) * 0.06 + 1e-9; lo -= padV; hi += padV;
@@ -433,19 +483,12 @@
       const y1 = Y(Math.max(b.o, b.c)), y2 = Y(Math.min(b.o, b.c));
       ctx.fillRect(x - bw / 2, y1, bw, Math.max(1, y2 - y1));
     }
-    if (tr) {                                            /* the fitted line rides on top */
-      ctx.beginPath(); ctx.moveTo(X(0), Y(tr.start)); ctx.lineTo(X(n - 1), Y(tr.end));
-      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
-    }
-    const label = 'بازسازی کندلی از تصویر · ' + n + ' کندل' + (tr
-      ? ' · خط روند: شیب ' + tr.slope + ' در هر کندل · r² ' + tr.r2 +
-        ' · ' + tr.start + ' ← ' + tr.end + ' (' + tr.risePct + '٪)'
-      : '');
+    const label = 'بازسازی کندلی از تصویر · ' + n + ' کندل';
     ctx.font = '12px ui-sans-serif,system-ui,sans-serif';
     const tw = ctx.measureText(label).width;
     ctx.fillStyle = 'rgba(2,6,23,.78)';
     ctx.fillRect(6, 6, Math.min(w - 12, tw + 14), 20);
-    ctx.fillStyle = '#fde047'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left';
     ctx.fillText(label, 13, 20);
     return true;
   }
@@ -458,7 +501,7 @@
       cv = document.createElement('canvas');
       cv.id = OV;
       cv.setAttribute('aria-hidden', 'true');
-      cv.setAttribute('title', 'کندل‌هایی که از پیکسل‌های همین تصویر اندازه‌گیری و به موتور داده شد، با خط روندشان');
+      cv.setAttribute('title', 'کندل‌هایی که از پیکسل‌های همین تصویر اندازه‌گیری و به موتور داده شد');
       cv.style.cssText = 'position:fixed;pointer-events:none;z-index:45;box-sizing:border-box;display:none';
       (document.body || document.documentElement).appendChild(cv);
       const again = () => { try { paintOverlay(); } catch (e) { } };
@@ -493,16 +536,13 @@
         if (r) {
           r.confirmedAt = new Date().toISOString();
           r.confirmedCandles = state.result.bars.length;
-          r.confirmedTrend = state.trend && state.trend.ok
-            ? { n: state.trend.n, slope: state.trend.slope, r2: state.trend.r2, start: state.trend.start, end: state.trend.end, direction: state.trend.direction }
-            : null;
         }
       } catch (e) { /* our own note */ }
       state.write = writeExtracted();      /* the engine gets the numbers; never blocks the close */
       keepOverlayRecord(overlayRecord()); /* the measured candles, kept for the card and the next load */
       mountOverlay();                     /* and the candle chart is drawn over «محیط الگو» right away */
-      status('تأیید شد — ' + state.result.bars.length + ' کندل و خط روندِ بسته‌شونده‌ها به موتور داده شد؛ ' +
-        'چارت کندلیِ همین اندازه‌گیری روی «محیط الگو» نشسته است. ' +
+      status('تأیید شد — ' + state.result.bars.length + ' کندل به موتور داده شد؛ ' +
+        'چارت کندلیِ همین اندازه‌گیری، هم‌قاب با همین پنجره، روی «محیط الگو» نشسته است. ' +
         'پنجره بسته شد و به صفحهٔ برنامه برگشتید. با همان کلید «ورود تصویر چارت» می‌توانید ادامه دهید.');
     } else {
       status('چیزی استخراج نشده بود؛ پنجره بسته شد.');
@@ -583,40 +623,10 @@
     if (src) ctx.drawImage(src, 0, 0, box.w, box.h);
     /* the line belongs to the picture, so it is drawn in the picture's own frame —
        on all three views, so a comparison between them stays a fair one */
-    try { drawTrend(cv, box); } catch (e) { console.warn('trend line failed:', e); }
     return box;
   }
   /* the fitted line, mapped back through the same two readings the candles came from:
      bar index -> x through the bar grid, price -> row through the axis that was read */
-  function drawTrend(cv, box) {
-    const tr = state.trend, res = state.result, im = state.img;
-    if (!cv || !tr || !tr.ok || !res || !im) return false;
-    const ok = res.bars.filter((b) => b.status === 'ok' && b.close != null);
-    if (ok.length < 2) return false;
-    const iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
-    if (!(iw > 0) || !(ih > 0)) return false;
-    const sc = res.scale || 1, fx = box.w / (iw * sc), fy = box.h / (ih * sc);
-    const r0 = window.ChartDNACV.rowForPrice(res.calibration, tr.start);
-    const r1 = window.ChartDNACV.rowForPrice(res.calibration, tr.end);
-    if (r0 == null || r1 == null) return false;
-    const ctx = cv.getContext('2d');
-    if (!ctx) return false;
-    const x0 = ok[0].x * fx, x1 = ok[ok.length - 1].x * fx, y0 = r0 * fy, y1 = r1 * fy;
-    ctx.save();
-    ctx.strokeStyle = '#facc15'; ctx.fillStyle = '#fde047';
-    ctx.lineWidth = Math.max(1.4, box.w / 800); ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-    /* the numbers belong to the marked view only: «بازسازی» stays the clean shape, and the
-       picture view keeps nothing of ours over it but the line itself */
-    if (cv.id === 'ohlc-ann') {
-      const fn = Math.max(9, Math.round(box.w / 110)) + 'px ui-monospace,monospace';
-      ctx.font = fn; ctx.textAlign = 'left';
-      ctx.fillText(tr.start.toFixed(2), Math.max(2, x0 - 44), Math.max(12, y0 - 5));
-      ctx.fillText(tr.end.toFixed(2), Math.min(x1 + 5, box.w - 48), Math.min(box.h - 4, y1 + 14));
-    }
-    ctx.restore();
-    return true;
-  }
   function drawOriginal() {
     const im = state.img;
     if (!im) return;
@@ -658,12 +668,6 @@
       res.scale = scale;
       state.result = res;
       if (!res.ok) { state.running = false; status('خطا: ' + res.error, 'err'); return res; }
-      /* the trend reading of a picture = a straight line through the closes it measured.
-         A cached engine older than 1.2.0 has no fitTrend: the candles still stand, only
-         the line and its hand-over are skipped, and the status says so. */
-      state.trend = typeof window.ChartDNACV.fitTrend === 'function'
-        ? window.ChartDNACV.fitTrend(res.bars.filter((b) => b.status === 'ok' && b.close != null).map((b) => b.close))
-        : { ok: false, n: 0, error: 'chart-ohlc-engine.js 1.2.0 or newer is needed for the trend line' };
       const ms = Math.round(performance.now() - t0);
       report(res, ms);
       try { drawResults(res); } catch (e) { console.warn('preview rendering failed:', e); }
@@ -725,8 +729,7 @@
       result: JSON.parse(JSON.stringify(res, (k, v) => (k === 'bars' ? undefined : v))),
       bars: JSON.parse(JSON.stringify(res.bars)),
       pixels: state.img ? { width: state.img.naturalWidth, height: state.img.naturalHeight } : null,
-      durationMs: ms,
-      trend: state.trend || null
+      durationMs: ms
     };
   }
 
@@ -779,8 +782,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 18,
-    trend: () => state.trend,
+    version: 19,
     write: () => state.write,
     lastWrite: () => state.lastWrite || null,
     overlay: (v) => setOverlay(v !== false),

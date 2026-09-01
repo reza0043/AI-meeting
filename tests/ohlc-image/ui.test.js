@@ -507,38 +507,20 @@ const ok = (name, cond, info) => {
      wick, the marked view must have laid a mark over the untouched screenshot */
   const dA = viewA.getContext('2d').getImageData(0, 0, viewA.width, viewA.height).data;
   const dO = viewO.getContext('2d').getImageData(0, 0, viewO.width, viewO.height).data;
-  /* #facc15 / #fde047 — the trend line and its two prices; the low-confidence tick is
-     #f59e0b and the candles are cyan/red, so anything found here can only be the line */
+  /* #facc15 / #fde047 was the trend line — removed in v28: nothing yellow may be left
+     on the reconstructed view (the low-confidence tick #f59e0b is well below the gate) */
   const chartD = $('ohlc-chart').getContext('2d').getImageData(0, 0, $('ohlc-chart').width, $('ohlc-chart').height).data;
   let yellow = 0;
   for (let i = 0; i < chartD.length; i += 4) {
     if (chartD[i] > 240 && chartD[i + 1] > 195 && chartD[i + 1] < 235 && chartD[i + 2] < 110) yellow++;
   }
   const nOk = res.bars.filter((b) => b.status === 'ok' && b.close != null).length;
-  const tr0 = win.ChartDnaOhlc.trend();
-  ok('the trend line is drawn over the reconstructed view too', yellow > 400,
-     yellow + ' line pixels on a ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' frame');
-  const ys = res.bars.filter((b) => b.status === 'ok' && b.close != null).map((b) => b.close);
-  const N = ys.length, mx = (N - 1) / 2, my = ys.reduce((a, v) => a + v, 0) / N;
-  let num = 0, den = 0;
-  ys.forEach((v, i) => { num += (i - mx) * (v - my); den += (i - mx) * (i - mx); });
-  const sl = num / den, ic = my - sl * mx;
-  const sse = ys.reduce((a, v, i) => a + (v - (ic + sl * i)) ** 2, 0);
-  const sst = ys.reduce((a, v) => a + (v - my) ** 2, 0);
-  ok('it is a fit to the closes that were measured, and only to them',
-    !!(tr0 && tr0.ok) && tr0.n === nOk && Math.abs(tr0.slope - sl) < 1e-5 &&
-    Math.abs(tr0.intercept - ic) < 0.02 && Math.abs(tr0.r2 - (1 - sse / sst)) < 1e-3 &&
-    tr0.values.length === nOk && tr0.closes.length === nOk && tr0.lo <= Math.min.apply(null, ys) + 1e-9 &&
-    tr0.hi >= Math.max.apply(null, ys) - 1e-9,
-    'slope ' + tr0.slope + ' vs ' + sl.toFixed(6) + ' · r² ' + tr0.r2 + ' vs ' + (1 - sse / sst).toFixed(4));
-  ok('the direction it reports agrees with its own slope, and the window says so plainly',
-    tr0.direction === (tr0.slope > 0 ? 'up' : tr0.slope < 0 ? 'down' : 'range') &&
-    Math.abs(tr0.start - ic) <= 0.005 && Math.abs(tr0.end - (ic + sl * (N - 1))) <= 0.005 &&
-    Math.abs(tr0.risePct - (tr0.end - tr0.start) / Math.abs(tr0.start) * 100) < 0.01,
-    tr0.direction + ' · ' + tr0.start + '→' + tr0.end + ' (' + tr0.risePct + '٪)');
-  ok('the line really is y = slope·k + intercept', nOk > 2 &&
-     Math.abs(tr0.values[nOk - 1] - (tr0.intercept + tr0.slope * (nOk - 1))) < 0.02,
-     'end ' + tr0.values[nOk - 1] + ' vs ' + (tr0.intercept + tr0.slope * (nOk - 1)).toFixed(4));
+  ok('no trend line is drawn over the reconstructed view any more', yellow === 0,
+     yellow + ' yellow px on a ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' frame');
+  ok('and nothing of it is computed any more — the engine and the window lost the seams',
+    typeof win.ChartDNACV.fitTrend === 'undefined' && typeof win.ChartDNACV.rowForPrice === 'undefined' &&
+    typeof win.ChartDnaOhlc.trend === 'undefined',
+    'fitTrend/rowForPrice/trend() all gone');
   let at = 0, tot = 0;
   res.bars.forEach((b) => {
     if (b.status !== 'ok' || b.confidence < 0.9) return;
@@ -629,13 +611,9 @@ const ok = (name, cond, info) => {
     'canvas ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' · csv still ' + nBars + ' rows');
   ok('confirming opened the app\u2019s store once and pressed nothing itself',
     idbLog.opens === 1 && searchClicks === 0, 'IndexedDB opens=' + idbLog.opens + ', app search clicks=' + searchClicks);
-  ok('the report now carries the line that was confirmed',
-    !!(win.__ohlcReport.confirmedTrend && win.__ohlcReport.confirmedTrend.n === nOk) &&
-    win.__ohlcReport.confirmedTrend.slope === tr0.slope && win.__ohlcReport.confirmedTrend.r2 === tr0.r2,
-    JSON.stringify(win.__ohlcReport.confirmedTrend));
-  ok('and the same numbers are in the run report', win.__ohlcReport.trend &&
-    win.__ohlcReport.trend.n === nOk && win.__ohlcReport.trend.values.length === nOk,
-    'trend for ' + nOk + ' closes');
+  ok('the report carries no trend fields at all',
+    !('confirmedTrend' in (win.__ohlcReport || {})) && !('trend' in (win.__ohlcReport || {})),
+    Object.keys(win.__ohlcReport || {}).join(','));
 
   console.log('4) what «تأیید» hands to the engine — the dataset, the library, the selection');
   await sleep(300);
@@ -660,31 +638,27 @@ const ok = (name, cond, info) => {
       rec.origin.candles === nBars && rec.origin.incomplete === (nBars - nOk) &&
       typeof rec.origin.meanConfidence === 'number' && rec.origin.grid && rec.origin.grid.pitch > 0),
     JSON.stringify(rec.origin && { candles: rec.origin.candles, measured: rec.origin.measured, usdPerPx: rec.origin.usdPerPx, axis: rec.origin.axis.model }));
-  ok('the trend line and its numbers ride along on the record',
-    !!rec.trend && rec.trend.n === nOk && rec.trend.slope === tr0.slope && rec.trend.r2 === tr0.r2 &&
-    rec.trend.start === tr0.start && rec.trend.end === tr0.end && rec.trend.model === tr0.model &&
-    rec.trend.unit === 'price per candle', JSON.stringify(rec.trend));
+  ok('no trend block rides on the record any more',
+    !('trend' in rec) && !(rec.origin && 'trend' in rec.origin) && !(rec.origin && 'slope' in rec.origin),
+    Object.keys(rec).join(','));
   ok('the dataset was added to the app\u2019s selection, not written over it',
     JSON.parse(win.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === wr.id,
     win.localStorage.getItem('chartdna_selected_dataset_ids'));
-  ok('two entries went to the pattern library, both searchable',
-    wr.patterns.length === 2 && wr.patterns[0] === 'custom_dna_px_' + wr.id &&
-    /_trend$/.test(wr.patterns[1]) && wr.patternStates.length === 2,
+  ok('one entry went to the pattern library — the closes; no line entry any more',
+    wr.patterns.length === 1 && wr.patterns[0] === 'custom_dna_px_' + wr.id &&
+    wr.patternStates.length === 1,
     wr.patterns.join(' + ') + ' → ' + wr.patternStates.join(','));
   const pend = JSON.parse(win.sessionStorage.getItem('chartdna_px_pending_pattern') || 'null');
   ok('this page had no library yet, so both entries wait for the next load instead of clobbering the seed',
-    wr.waitingForLoad === true && Array.isArray(pend) && pend.length === 2 &&
-    pend[0].id === wr.patterns[0] && pend[1].id === wr.patterns[1],
+    wr.waitingForLoad === true && Array.isArray(pend) && pend.length === 1 &&
+    pend[0].id === wr.patterns[0],
     'queued: ' + (Array.isArray(pend) ? pend.map((x) => x.id).join(' + ') : 'nothing'));
   const closes = (rec.candles || []).map((c) => c.close);
-  ok('the first entry is exactly the closes the engine compares',
+  ok('the entry is exactly the closes the engine compares, and nothing about a line',
     pend[0].points.join() === closes.join() && pend[0].normalizedPoints.length === nOk &&
-    pend[0].normalizedPoints.every((v) => v >= -1.0001 && v <= 1.0001) && pend[0].category === 'Pixel trend',
+    pend[0].normalizedPoints.every((v) => v >= -1.0001 && v <= 1.0001) && pend[0].category === 'Pixel closes' &&
+    !/خط روند|trend/i.test(pend[0].notes || ''),
     pend[0].points.slice(0, 3).join(', ') + ' … ' + pend[0].points[pend[0].points.length - 1]);
-  ok('the second is the line itself, and its note says plainly that a straight ramp is a weak query',
-    pend[1].points.join() === tr0.values.join() && /راستای صاف/.test(pend[1].notes) &&
-    /کمترین‌مربعات/.test(pend[1].notes) && pend[1].name === wr.name + ' · trend line',
-    pend[1].name + ' · ' + String(pend[1].notes).slice(0, 64) + '…');
   ok('the names keep clear of the sweep that deletes the old image records',
     wr.patterns.every((p) => p.indexOf('img-') !== 0) &&
     !/from image|کادر برنامه|از تصویر/i.test(wr.name) && !/^img-/.test(wr.id),
@@ -708,14 +682,14 @@ const ok = (name, cond, info) => {
     if (ovd[i + 3] > 60 && ovd[i] < 90 && ovd[i + 1] > 120 && ovd[i + 2] > 110 && ovd[i + 2] < 200) oteal++;
     if (ovd[i + 3] > 60 && ovd[i] > 200 && ovd[i + 1] < 130 && ovd[i + 2] < 130) ored++;
   }
-  ok('the overlay carries the measured candles themselves, and the line on top of them', oy > 300 && (oteal + ored) > 400,
+  ok('the overlay carries the measured candles themselves, and no line over them', oy === 0 && (oteal + ored) > 400,
     oy + ' line px · ' + oteal + ' bull px · ' + ored + ' bear px');
   ok('and the record of that chart is kept for the next load, outside every sweep pattern', (function () {
     let rec = null;
     try { rec = JSON.parse(win.localStorage.getItem('chartdna_px_overlay') || 'null'); } catch (e) { return false; }
     return !!rec && Array.isArray(rec.candles) && rec.candles.length === nOk &&
       rec.candles.every((c) => typeof c.c === 'number' && c.h >= Math.max(c.o, c.c) && c.l <= Math.min(c.o, c.c)) &&
-      !!rec.trend && rec.trend.n === nOk && rec.trend.slope === tr0.slope;
+      !('trend' in rec) && !!rec.frame && rec.frame.w > 40;
   })(), win.localStorage.getItem('chartdna_px_overlay') ? 'chartdna_px_overlay: ' + win.localStorage.getItem('chartdna_px_overlay').length + ' chars' : 'missing');
   ok('the overlay is ours to switch off again', win.ChartDnaOhlc.overlay(false) === false &&
     !$('ohlc-trend-overlay') && win.ChartDnaOhlc.overlay(true) === true && !!$('ohlc-trend-overlay'),
@@ -750,16 +724,11 @@ const ok = (name, cond, info) => {
   await sleep(300);
   const wr2 = w2.__ohlcWrite || {};
   const lib2 = JSON.parse(w2.localStorage.getItem('chartdna_saved_patterns') || '[]');
-  ok('with a library present, both entries are written into it and the user\u2019s own stays first',
-    !wr2.error && wr2.waitingForLoad === false && wr2.patternStates.join() === 'added,added' &&
-    lib2.length === 3 && lib2[0].id === 'builtin_1' && lib2[1].id === wr2.patterns[0] && lib2[2].id === wr2.patterns[1],
+  ok('with a library present, the closes entry is written into it and the user\u2019s own stays first',
+    !wr2.error && wr2.waitingForLoad === false && wr2.patternStates.join() === 'added' &&
+    lib2.length === 2 && lib2[0].id === 'builtin_1' && lib2[1].id === wr2.patterns[0] &&
+    !lib2.some((p) => /_trend$/.test(p.id)),
     lib2.map((p) => p.id + '(' + (p.points || []).length + ')').join(' '));
-  ok('the line entry is a straight ramp once normalised, which is why it carries the warning',
-    lib2.length === 3 && (() => {
-      const t = lib2[2], u = (t.points || []).slice(1).map((v, i) => v - t.points[i]);
-      const flat = u.every((dv) => Math.abs(dv - u[0]) < 0.02);
-      return flat && /راستای صاف/.test(t.notes) && Math.abs(t.normalizedPoints[0] + 1) < 0.01 && Math.abs(t.normalizedPoints[t.points.length - 1] - 1) < 0.01;
-    })(), lib2.length === 3 ? lib2[2].name + ' · ' + lib2[2].category : '—');
   ok('the selection grows instead of being replaced',
     JSON.parse(w2.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === 'ds-user-1,' + wr2.id,
     w2.localStorage.getItem('chartdna_selected_dataset_ids'));
@@ -780,8 +749,8 @@ const ok = (name, cond, info) => {
   w2.localStorage.setItem('chartdna_saved_patterns', patSeed);
   await sleep(2100);
   const lib3 = JSON.parse(w2.localStorage.getItem('chartdna_saved_patterns') || '[]');
-  ok('a write-back from the app does not cost us our two entries',
-    lib3.length === 3 && lib3.some((p) => p.id === wr2.patterns[0]) && lib3.some((p) => /_trend$/.test(p.id)) &&
+  ok('a write-back from the app does not cost us our entry',
+    lib3.length === 2 && lib3.some((p) => p.id === wr2.patterns[0]) &&
     lib3[0].id === 'builtin_1', lib3.map((p) => p.id).join(' | '));
   ok('and that page was fed too: the store was opened once more, no more', idbLog.opens === 2, 'opens=' + idbLog.opens);
   ok('still no click on «جستجو» from us in either page', searchClicks === 0, searchClicks + ' clicks');
