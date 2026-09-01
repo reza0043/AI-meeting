@@ -692,7 +692,7 @@ const ok = (name, cond, info) => {
   ok('no search was run for the user and no reload was forced', searchClicks === 0 &&
     !/location\.reload|__chartDnaReload/.test(fs.readFileSync('/home/user/repo/chart-ohlc-extractor.js', 'utf8')),
     'app search clicks=' + searchClicks);
-  ok('the trend line is painted over «محیط الگو» as a sibling that cannot be clicked', (function () {
+  ok('the candle chart is painted over «محیط الگو» as a sibling that cannot be clicked', (function () {
     const ov = $('ohlc-trend-overlay');
     const app = $('app-canvas');
     if (!ov || !app) return false;
@@ -702,13 +702,21 @@ const ok = (name, cond, info) => {
       ov.width > 0 && ov.height > 0 && !!r && !!ov.getAttribute('title') && app.parentNode === $('image-cropper-card');
   })(), (function () { const o = $('ohlc-trend-overlay'); return o ? o.width + '×' + o.height + ' over ' + (o.style.left || '?') + ',' + (o.style.top || '?') : 'no overlay'; })());
   const ovd = $('ohlc-trend-overlay') && $('ohlc-trend-overlay').getContext('2d').getImageData(0, 0, $('ohlc-trend-overlay').width, $('ohlc-trend-overlay').height).data;
-  let oy = 0, ogrey = 0;
+  let oy = 0, oteal = 0, ored = 0;
   if (ovd) for (let i = 0; i < ovd.length; i += 4) {
     if (ovd[i] > 240 && ovd[i + 1] > 195 && ovd[i + 1] < 235 && ovd[i + 2] < 110) oy++;
-    if (ovd[i + 3] > 60 && ovd[i] > 120 && ovd[i] < 180) ogrey++;
+    if (ovd[i + 3] > 60 && ovd[i] < 90 && ovd[i + 1] > 120 && ovd[i + 2] > 110 && ovd[i + 2] < 200) oteal++;
+    if (ovd[i + 3] > 60 && ovd[i] > 200 && ovd[i + 1] < 130 && ovd[i + 2] < 130) ored++;
   }
-  ok('the overlay carries the line and, faintly, the closes it was fitted on', oy > 300 && ogrey > 200,
-    oy + ' line px · ' + ogrey + ' close px');
+  ok('the overlay carries the measured candles themselves, and the line on top of them', oy > 300 && (oteal + ored) > 400,
+    oy + ' line px · ' + oteal + ' bull px · ' + ored + ' bear px');
+  ok('and the record of that chart is kept for the next load, outside every sweep pattern', (function () {
+    let rec = null;
+    try { rec = JSON.parse(win.localStorage.getItem('chartdna_px_overlay') || 'null'); } catch (e) { return false; }
+    return !!rec && Array.isArray(rec.candles) && rec.candles.length === nOk &&
+      rec.candles.every((c) => typeof c.c === 'number' && c.h >= Math.max(c.o, c.c) && c.l <= Math.min(c.o, c.c)) &&
+      !!rec.trend && rec.trend.n === nOk && rec.trend.slope === tr0.slope;
+  })(), win.localStorage.getItem('chartdna_px_overlay') ? 'chartdna_px_overlay: ' + win.localStorage.getItem('chartdna_px_overlay').length + ' chars' : 'missing');
   ok('the overlay is ours to switch off again', win.ChartDnaOhlc.overlay(false) === false &&
     !$('ohlc-trend-overlay') && win.ChartDnaOhlc.overlay(true) === true && !!$('ohlc-trend-overlay'),
     'off then on');

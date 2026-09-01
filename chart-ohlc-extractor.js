@@ -6,7 +6,9 @@
  * Nothing is downloaded and no picture leaves the page. «تأیید» hands the
  * measurement to the app's own engine — one dataset carrying every field that was
  * read, plus the trend line as a second, separately searchable entry in the pattern
- * library — and paints that line over «محیط الگو». The search itself stays the
+ * library — and paints the reconstructed candlestick chart (trend line on top) over
+ * «محیط الگو», keeping it in chartdna_px_overlay so it is back after a reload. The
+ * search itself stays the
  * app's action: this window never presses «جستجو» for the user and never reloads.
  * It has no button of its own: the app's picture-icon key in the recorder-like play
  * strip (#btn-import-image, «ورود تصویر چارت») opens this environment instead of the
@@ -112,7 +114,7 @@
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, trend: null, write: null };
+  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, trend: null, write: null, ovData: null };
 
   /* ------------------------------------------------------------ open/close */
   const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
@@ -309,14 +311,55 @@
     }
   }
 
-  /* --------------------------------------------- the line inside «محیط الگو» window
-   * The app owns that card and repaints it, so nothing is put inside it: the line lives
+  /* --------------------------------------- the candle chart inside «محیط الگو» window
+   * The app owns that card and repaints it, so nothing is put inside it: the chart lives
    * on a canvas of ours that sits exactly over the card, ignores the pointer and follows
-   * the card as it moves. It appears once the user has confirmed, and goes away again if
-   * the card is not on screen. localStorage.chartdna_trend_overlay = '0' drops it. */
-  const OV = 'ohlc-trend-overlay', OV_OFF = 'chartdna_trend_overlay';
+   * the card as it moves. Since v26 it is not a lone trend line any more: the candles the
+   * vision engine measured out of the pixels are drawn as a candlestick chart (wick +
+   * body, the engine's own two colours), the least-squares trend line rides on top, and
+   * the record is kept in localStorage (chartdna_px_overlay — outside every sweep
+   * pattern) so the chart is back on the card after a reload, without touching React.
+   * localStorage.chartdna_trend_overlay = '0' drops it. */
+  const OV = 'ohlc-trend-overlay', OV_OFF = 'chartdna_trend_overlay', OV_STORE = 'chartdna_px_overlay';
   const ovOn = () => { try { return localStorage.getItem(OV_OFF) !== '0'; } catch (e) { return true; } };
   const cropCard = () => document.getElementById('image-cropper-card');
+  /* what the chart is drawn from: the measured candles + the fitted line, nothing else */
+  function overlayRecord() {
+    const res = state.result, tr = state.trend;
+    if (!res || !res.ok || !tr || !tr.ok) return null;
+    const bars = res.bars.filter((b) => b.status === 'ok' && b.close != null);
+    if (!bars.length) return null;
+    const candles = bars.map((b) => ({
+      o: b.open == null ? b.close : b.open,
+      h: b.high == null ? Math.max(b.open == null ? b.close : b.open, b.close) : b.high,
+      l: b.low == null ? Math.min(b.open == null ? b.close : b.open, b.close) : b.low,
+      c: b.close,
+      up: b.direction === 'Bullish'
+    }));
+    return {
+      at: new Date().toISOString(),
+      candles,
+      trend: {
+        n: tr.n, slope: tr.slope, r2: tr.r2, start: tr.start, end: tr.end,
+        risePct: tr.risePct, direction: tr.direction
+      }
+    };
+  }
+  function keepOverlayRecord(rec) {
+    state.ovData = rec || null;
+    try {
+      if (rec) localStorage.setItem(OV_STORE, JSON.stringify(rec));
+      else localStorage.removeItem(OV_STORE);
+    } catch (e) { /* quota: the chart still lives for this session */ }
+  }
+  (function loadStoredOverlay() {
+    try {
+      const raw = localStorage.getItem(OV_STORE);
+      if (!raw) return;
+      const rec = JSON.parse(raw);
+      if (rec && Array.isArray(rec.candles) && rec.candles.length) state.ovData = rec;
+    } catch (e) { /* unreadable: start clean */ }
+  })();
   function removeOverlay() {
     const cv = document.getElementById(OV);
     if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
@@ -326,10 +369,10 @@
     const cv = document.getElementById(OV);
     if (!cv) return false;
     if (!ovOn()) { removeOverlay(); return false; }
-    const card = cropCard(), tr = state.trend;
+    const card = cropCard(), dat = state.ovData;
     const stage = card ? (card.querySelector('canvas') || card) : null;
     const r = stage ? stage.getBoundingClientRect() : null;
-    if (!r || !tr || !tr.ok || !(r.width > 60) || !(r.height > 40)) { cv.style.display = 'none'; return false; }
+    if (!r || !dat || !dat.candles || !dat.candles.length || !(r.width > 60) || !(r.height > 40)) { cv.style.display = 'none'; return false; }
     const w = Math.round(r.width), h = Math.round(r.height);
     cv.style.display = 'block';
     cv.style.left = Math.round(r.left) + 'px'; cv.style.top = Math.round(r.top) + 'px';
@@ -338,16 +381,42 @@
     const ctx = cv.getContext('2d');
     if (!ctx) return false;
     ctx.clearRect(0, 0, w, h);
-    const pad = 10, n = tr.n, span = (tr.hi - tr.lo) || 1;
+    const cs = dat.candles, n = cs.length, tr = dat.trend;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n; i++) { if (cs[i].l < lo) lo = cs[i].l; if (cs[i].h > hi) hi = cs[i].h; }
+    const padV = (hi - lo) * 0.06 + 1e-9; lo -= padV; hi += padV;
+    const pad = 10, span = (hi - lo) || 1;
     const X = (i) => pad + (n > 1 ? (i * (w - pad * 2)) / (n - 1) : (w - pad * 2) / 2);
-    const Y = (v) => h - pad - ((v - tr.lo) / span) * (h - pad * 2);
-    ctx.beginPath();                                     /* the closes the line was fitted on */
-    for (let i = 0; i < n; i++) { const x = X(i), y = Y(tr.closes[i]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
-    ctx.strokeStyle = 'rgba(148,163,184,.45)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(X(0), Y(tr.start)); ctx.lineTo(X(n - 1), Y(tr.end));
-    ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
-    const label = 'خط روند · ' + n + ' کندل · شیب ' + tr.slope + ' در هر کندل · r² ' + tr.r2 +
-      ' · ' + tr.start + ' ← ' + tr.end + ' (' + tr.risePct + '٪)';
+    const Y = (v) => h - pad - ((v - lo) / span) * (h - pad * 2);
+    /* a faint pane so the candles read on whatever the card shows behind them */
+    ctx.fillStyle = 'rgba(2,6,23,.35)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(30,41,59,.9)'; ctx.lineWidth = 1;
+    ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = 'right';
+    for (let gy = 0; gy <= 4; gy++) {                    /* gridlines with their prices */
+      const pv = lo + ((hi - lo) * gy) / 4, yy = Y(pv);
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(w, yy); ctx.stroke();
+      ctx.fillStyle = 'rgba(100,116,139,.9)';
+      ctx.fillText(pv.toFixed(2), w - 4, yy - 3);
+    }
+    const step = (w - pad * 2) / Math.max(1, n - 1);     /* the candles themselves */
+    const bw = Math.max(1, Math.min(9, step * 0.68));
+    for (let i = 0; i < n; i++) {
+      const b = cs[i], x = X(i);
+      ctx.strokeStyle = ctx.fillStyle = b.up ? '#26a69a' : '#ef5350';
+      ctx.lineWidth = Math.max(1, bw * 0.18);
+      ctx.beginPath(); ctx.moveTo(x, Y(b.h)); ctx.lineTo(x, Y(b.l)); ctx.stroke();
+      const y1 = Y(Math.max(b.o, b.c)), y2 = Y(Math.min(b.o, b.c));
+      ctx.fillRect(x - bw / 2, y1, bw, Math.max(1, y2 - y1));
+    }
+    if (tr) {                                            /* the fitted line rides on top */
+      ctx.beginPath(); ctx.moveTo(X(0), Y(tr.start)); ctx.lineTo(X(n - 1), Y(tr.end));
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+    }
+    const label = 'بازسازی کندلی از تصویر · ' + n + ' کندل' + (tr
+      ? ' · خط روند: شیب ' + tr.slope + ' در هر کندل · r² ' + tr.r2 +
+        ' · ' + tr.start + ' ← ' + tr.end + ' (' + tr.risePct + '٪)'
+      : '');
     ctx.font = '12px ui-sans-serif,system-ui,sans-serif';
     const tw = ctx.measureText(label).width;
     ctx.fillStyle = 'rgba(2,6,23,.78)';
@@ -358,14 +427,14 @@
   }
   function mountOverlay() {
     if (!ovOn()) { removeOverlay(); return false; }
-    const tr = state.trend;
-    if (!tr || !tr.ok) return false;
+    const dat = state.ovData;
+    if (!dat || !dat.candles || !dat.candles.length) return false;
     let cv = document.getElementById(OV);
     if (!cv) {
       cv = document.createElement('canvas');
       cv.id = OV;
       cv.setAttribute('aria-hidden', 'true');
-      cv.setAttribute('title', 'خط روندی که از بسته‌شوندهٔ کندل‌های همین تصویر خوانده شد و به موتور داده شد');
+      cv.setAttribute('title', 'کندل‌هایی که از پیکسل‌های همین تصویر اندازه‌گیری و به موتور داده شد، با خط روندشان');
       cv.style.cssText = 'position:fixed;pointer-events:none;z-index:45;box-sizing:border-box;display:none';
       (document.body || document.documentElement).appendChild(cv);
       const again = () => { try { paintOverlay(); } catch (e) { } };
@@ -378,6 +447,13 @@
     }
     return paintOverlay();
   }
+  /* a chart confirmed before this load: back on the card as soon as React has built it */
+  (function remountStoredOverlay() {
+    if (!state.ovData) return;
+    const boot = setInterval(() => { if (mountOverlay()) clearInterval(boot); }, 800);
+    setTimeout(() => clearInterval(boot), 30000);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mountOverlay());
+  })();
   function setOverlay(v) {
     try { localStorage.setItem(OV_OFF, v ? '1' : '0'); } catch (e) { }
     if (v) mountOverlay(); else removeOverlay();
@@ -399,8 +475,10 @@
         }
       } catch (e) { /* our own note */ }
       state.write = writeExtracted();      /* the engine gets the numbers; never blocks the close */
-      mountOverlay();                     /* and the line is drawn over «محیط الگو» right away */
+      keepOverlayRecord(overlayRecord()); /* the measured candles, kept for the card and the next load */
+      mountOverlay();                     /* and the candle chart is drawn over «محیط الگو» right away */
       status('تأیید شد — ' + state.result.bars.length + ' کندل و خط روندِ بسته‌شونده‌ها به موتور داده شد؛ ' +
+        'چارت کندلیِ همین اندازه‌گیری روی «محیط الگو» نشسته است. ' +
         'پنجره بسته شد و به صفحهٔ برنامه برگشتید. با همان کلید «ورود تصویر چارت» می‌توانید ادامه دهید.');
     } else {
       status('چیزی استخراج نشده بود؛ پنجره بسته شد.');
@@ -677,12 +755,13 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 17,
+    version: 18,
     trend: () => state.trend,
     write: () => state.write,
     lastWrite: () => state.lastWrite || null,
     overlay: (v) => setOverlay(v !== false),
-    clearOverlay: () => { removeOverlay(); return !document.getElementById(OV); },
+    overlayData: () => state.ovData || null,
+    clearOverlay: () => { removeOverlay(); keepOverlayRecord(null); return !document.getElementById(OV); },
     engine: () => window.ChartDNACV,
     busy: () => !!state.running,
     image: () => state.img,

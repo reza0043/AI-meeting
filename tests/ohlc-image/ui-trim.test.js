@@ -62,6 +62,22 @@ const PAGE = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-
   <div data-panel="trend" class="bg-slate-900/80 border rounded-2xl p-4">
     <span>خلاصه روند</span><p>صعودی</p>
   </div>
+  <div id="remote-control-deck" class="w-full border rounded-xl p-1.5 flex items-center gap-1">
+    <button id="btn-import-image" class="flex-1 h-9 rounded-lg" title="ورود تصویر چارت"><svg></svg></button>
+    <button id="btn-price-scale" class="flex-1 h-9 rounded-lg" title="تراز مقیاس قیمت"><svg></svg></button>
+    <button id="btn-extract-pattern" class="flex-1 h-9 rounded-lg" title="استخراج الگو از کادر"><svg></svg></button>
+    <button id="btn-clear-all" class="flex-1 h-9 rounded-lg" title="پاکسازی محیط"><svg></svg></button>
+    <button id="btn-start-analysis" class="flex-1 h-9 rounded-lg" title="شروع تحلیل DNA"><svg></svg></button>
+  </div>
+  <div id="settings-modal">
+    <button id="tab-data"><svg></svg><span>مدیریت داده‌ها</span></button>
+    <button id="tab-extractor"><svg></svg><span>تشخیص و ثبت الگو از تصویر</span></button>
+    <button id="nav-extract"><svg></svg><span>ثبت الگوی جدید از تصویر</span></button>
+    <div id="resolution-card" class="p-3.5 rounded-xl border border-violet-500/30 bg-slate-900/90 flex flex-col gap-2">
+      <span>تعداد نقاط شباهت و تفکیک الگو (Pattern Resolution Points):</span><input type="range">
+    </div>
+    <div id="weights-card" class="p-3.5 rounded-xl border border-slate-800"><span>وزن همبستگی خطی پیرسون (Pearson Correlation):</span></div>
+  </div>
   <div id="ohlc-auto-card" class="rounded-2xl p-4">کارتِ قدیمیِ افزونه</div>
   <div id="ohlc-tool" class="ohlc-pinned" style="top:60px;left:796px"><button id="ohlc-open">📈 استخراج OHLC از تصویر</button></div>
 </div></div>
@@ -246,6 +262,40 @@ const ok = (name, cond, info) => {
 
   ok('a panel the app renders later is hidden too (no id, matched by title)',
     fresh.style.display === 'none' && win.ChartDnaUiTrim.hidden() === 3, 'hidden=' + win.ChartDnaUiTrim.hidden());
+
+  /* -------------------------------------------- 1b) engine 2 is out of the page too */
+  console.log('1b) the engine-2 controls (image → pattern) are taken off the page');
+  const e2btn = (id) => doc.getElementById(id);
+  ok('the «استخراج الگو از کادر» deck key is hidden and dead',
+    e2btn('btn-extract-pattern').style.display === 'none' && e2btn('btn-extract-pattern').disabled &&
+    e2btn('btn-extract-pattern').getAttribute('data-dna-engine2') === 'off',
+    'display=' + e2btn('btn-extract-pattern').style.display);
+  ok('the «تراز مقیاس قیمت» deck key is hidden and dead',
+    e2btn('btn-price-scale').style.display === 'none' && e2btn('btn-price-scale').disabled,
+    'display=' + e2btn('btn-price-scale').style.display);
+  ok('the «ورود تصویر چارت» key and the rest of the deck are untouched',
+    e2btn('btn-import-image').style.display !== 'none' && !e2btn('btn-import-image').disabled &&
+    e2btn('btn-clear-all').style.display !== 'none' && e2btn('btn-start-analysis').style.display !== 'none',
+    'neighbours visible');
+  ok('the «تشخیص و ثبت الگو از تصویر» settings tab key is hidden, by wording',
+    e2btn('tab-extractor').style.display === 'none' && e2btn('tab-extractor').disabled, 'display=' + e2btn('tab-extractor').style.display);
+  ok('the «ثبت الگوی جدید از تصویر» shortcut is hidden the same way',
+    e2btn('nav-extract').style.display === 'none', 'display=' + e2btn('nav-extract').style.display);
+  ok('the data tab key next to them is untouched',
+    e2btn('tab-data').style.display !== 'none' && !e2btn('tab-data').disabled, 'مدیریت داده‌ها visible');
+  ok('the resolution-points card is hidden, and the weights card next to it is not',
+    e2btn('resolution-card').style.display === 'none' && e2btn('weights-card').style.display !== 'none',
+    'resolution=' + e2btn('resolution-card').style.display + ' weights=' + e2btn('weights-card').style.display);
+  ok('the tool reports the five controls it took',
+    win.ChartDnaUiTrim.engine2Nodes().length === 5, win.ChartDnaUiTrim.engine2Nodes().length + ' nodes');
+  ok('chartdna_engine2=1 gives them all back',
+    win.ChartDnaUiTrim.engine2On() === 5 && e2btn('btn-extract-pattern').style.display !== 'none' &&
+    !e2btn('btn-extract-pattern').disabled && e2btn('resolution-card').style.display !== 'none',
+    'display=' + e2btn('btn-extract-pattern').style.display);
+  ok('and one call takes them off again',
+    win.ChartDnaUiTrim.engine2Off() >= 5 && e2btn('btn-extract-pattern').style.display === 'none' &&
+    e2btn('resolution-card').style.display === 'none',
+    'display=' + e2btn('btn-extract-pattern').style.display);
 
   /* ------------------------------------------------- 2) the data it left behind */
   console.log('2) the leftovers are swept, the user data is not');

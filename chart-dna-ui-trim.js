@@ -14,6 +14,11 @@
  *   4. The upload prompt in the middle of «محیط الگو» (#image-cropper-card): the
  *      icon box, its two lines of text and the click that opens the file dialog —
  *      gone together with the function, not only the pixels.
+ *   5. Engine 2 — the bundle's own image→pattern extractor ("AI Vision"): its core
+ *      is disabled inside assets/index-DOCOgEgh.js itself (see the engine-2 block
+ *      below); this script re-hides the same controls (استخراج الگو از کادر،
+ *      تراز مقیاس قیمت، تب «تشخیص و ثبت الگو از تصویر»، کارت «تعداد نقاط شباهت»)
+ *      when a cached copy of the old bundle still builds them.
  *   Panels 2 to 4 live in the minified bundle with no source in this repo, so
  *   they are hidden in place instead of being ripped out of React's tree: hiding
  *   is safe, removing a node React owns is not.
@@ -25,6 +30,8 @@
  *                           chartdna_ui_trim_swept      -> set by the data sweep
  *                           chartdna_crop_upload = '0'  -> the crop card's upload prompt
  *                                                         and its file input come back
+ *                           chartdna_engine2 = '1'      -> engine-2 controls are left alone
+ *                                                         (only useful on an old cached bundle)
  */
 (() => {
   const OFF = 'chartdna_ui_trim';
@@ -305,6 +312,99 @@
     return n;
   }
 
+  /* --------------------------------------------------- engine 2 (image → pattern) is out
+   * The in-bundle "AI Vision" extractor — the curve-from-pixels routine behind
+   * «استخراج الگو از کادر», the «تشخیص و ثبت الگو از تصویر» settings tab and the
+   * price-scale OCR — is switched off at the root inside assets/index-DOCOgEgh.js
+   * (rd() and zu() return early, the tab renders nothing, the deck keys carry
+   * display:none, the app's own image picker returns before it opens). What follows
+   * here is the belt to those braces: a *cached* copy of the old bundle still builds
+   * that UI, so the same controls are hidden again from outside, by id and by wording.
+   * The reference pattern of the matcher now comes from the pattern library alone —
+   * i.e. from the OHLC vision engine's confirmed measurements (chart-ohlc-extractor.js)
+   * and from the standard library. localStorage.chartdna_engine2 = '1' brings the
+   * old controls back (for a build that still has them working). */
+  const E2_OFF = 'chartdna_engine2';                     /* '1' -> leave engine-2 UI alone */
+  const E2_IDS = ['btn-extract-pattern', 'btn-price-scale'];
+  const E2_BTN_TEXT = [
+    'تشخیص و ثبت الگو از تصویر',                          /* the settings tab key (fa fallback in every language) */
+    'ثبت الگوی جدید از تصویر', '+ Extract New Pattern'   /* the shortcut in the data tab */
+  ];
+  const E2_CARD_TEXT = [
+    'تعداد نقاط شباهت و تفکیک الگو', 'Pattern Similarity Points & Resolution'
+  ];
+  const e2On = () => { try { return localStorage.getItem(E2_OFF) !== '1'; } catch (e) { return true; } };
+  const e2Nodes = [];
+  function e2Hide(el, why) {
+    if (!el || el.__dnaE2Off) return false;
+    el.__dnaE2Off = true;
+    el.setAttribute('data-dna-engine2', 'off');
+    el.setAttribute('aria-hidden', 'true');
+    el.setAttribute('hidden', '');
+    el.style.setProperty('display', 'none', 'important');
+    if (el.tagName === 'BUTTON') el.disabled = true;
+    if (e2Nodes.indexOf(el) < 0) e2Nodes.push(el);
+    log('engine-2 control hidden by ' + why + (el.id ? ': #' + el.id : ''));
+    return true;
+  }
+  function e2Back() {
+    for (let i = 0; i < e2Nodes.length; i++) {
+      const el = e2Nodes[i];
+      if (!el || !el.isConnected) continue;
+      el.style.removeProperty('display');
+      el.removeAttribute('hidden'); el.removeAttribute('aria-hidden');
+      el.removeAttribute('data-dna-engine2');
+      if (el.tagName === 'BUTTON') el.disabled = false;
+      delete el.__dnaE2Off;
+    }
+    const n = e2Nodes.length;
+    e2Nodes.length = 0;
+    return n;
+  }
+  function killEngine2() {
+    if (!on()) return 0;
+    if (!e2On()) return -e2Back();
+    let n = 0;
+    for (let i = 0; i < E2_IDS.length; i++) {            /* the two deck keys, by their stable ids */
+      const el = document.getElementById(E2_IDS[i]);
+      if (!el) continue;
+      /* a re-render clears inline styles: hidden nodes are re-asserted, not only new ones */
+      if (!el.__dnaE2Off) { if (e2Hide(el, 'id')) n++; }
+      else if (el.style.display !== 'none') { el.style.setProperty('display', 'none', 'important'); el.disabled = true; n++; }
+    }
+    const btns = document.querySelectorAll('button');    /* the tab key and the shortcut, by wording */
+    for (let i = 0; i < btns.length; i++) {
+      const b = btns[i];
+      if (b.__dnaE2Off) continue;
+      const t = (b.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!t) continue;
+      for (let k = 0; k < E2_BTN_TEXT.length; k++) {
+        if (t === E2_BTN_TEXT[k]) { if (e2Hide(b, 'wording')) n++; break; }
+      }
+    }
+    const spans = document.querySelectorAll('span');     /* the resolution-points card, by its title */
+    for (let i = 0; i < spans.length; i++) {
+      const el = spans[i];
+      const t = ownText(el);
+      if (!t) continue;
+      let hit = false;
+      for (let k = 0; k < E2_CARD_TEXT.length; k++) if (t.indexOf(E2_CARD_TEXT[k]) === 0) { hit = true; break; }
+      if (!hit) continue;
+      let card = null;
+      try { card = el.closest('[class*="border-violet"]'); } catch (e) { card = null; }
+      if (!card) {                                       /* renamed classes: the nearest small card */
+        let node = el;
+        for (let up = 0; node && up < 6; up++) {
+          node = node.parentElement;
+          if (node && /rounded-xl/.test(node.className || '') && !tooBig(node)) { card = node; break; }
+        }
+      }
+      if (card && !tooBig(card) && e2Hide(card, 'card title')) n++;
+    }
+    if (n) log('engine-2 leftovers hidden:', n);
+    return n;
+  }
+
   /* --------------------------------------------------------------- the data sweep */
   function dropOurPatterns() {
     let removed = 0;
@@ -421,6 +521,7 @@
     if (!on()) { log('switched off by ' + OFF); return; }
     dropOwnCard();
     killCropUpload();
+    killEngine2();
     hideOverlays(true);
     sweep();
     /* the app mounts after us and re-renders, so keep watching; our own writes
@@ -429,20 +530,20 @@
     const again = () => {
       if (queued) return;
       queued = true;
-      (window.requestAnimationFrame || function (f) { return setTimeout(f, 32); })(() => { queued = false; dropOwnCard(); killCropUpload(); hideOverlays(); });
+      (window.requestAnimationFrame || function (f) { return setTimeout(f, 32); })(() => { queued = false; dropOwnCard(); killCropUpload(); killEngine2(); hideOverlays(); });
     };
     try {
       const mo = new MutationObserver(again);
       mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch (e) { }
     /* the app mounts after us and may rebuild these panels later */
-    const settle = setInterval(() => { dropOwnCard(); killCropUpload(); hideOverlays(true); }, 600);
+    const settle = setInterval(() => { dropOwnCard(); killCropUpload(); killEngine2(); hideOverlays(true); }, 600);
     setTimeout(() => clearInterval(settle), 20000);
   }
   if (document.body) run(); else document.addEventListener('DOMContentLoaded', run);
 
   window.ChartDnaUiTrim = {
-    version: 5,
+    version: 6,
     titles: TITLES.slice(),
     ids: IDS.slice(),
     cropText: CROP_TEXT.slice(),
@@ -453,6 +554,10 @@
     cropPass: () => killCropUpload(),
     cropOff: () => { try { localStorage.setItem(CROP_OFF, '0'); } catch (e) { } return bringCropBack(); },
     cropOn: () => { try { localStorage.removeItem(CROP_OFF); } catch (e) { } return killCropUpload(); },
+    engine2Nodes: () => e2Nodes.slice(),
+    engine2Pass: () => killEngine2(),
+    engine2On: () => { try { localStorage.setItem(E2_OFF, '1'); } catch (e) { } return e2Back(); },
+    engine2Off: () => { try { localStorage.removeItem(E2_OFF); } catch (e) { } return killEngine2(); },
     sweep: () => sweep(true),
     hidden: () => panels.length,
     off: () => { try { localStorage.setItem(OFF, '0'); } catch (e) { } }
