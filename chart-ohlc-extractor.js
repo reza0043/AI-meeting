@@ -4,8 +4,8 @@
  * of the numbers. The trend line and everything computed for it were removed in v28.
  * The window is named after what it is for: an image goes in, candles come out.
  * Nothing is downloaded and no picture leaves the page. «تأیید» hands the
- * measurement to the app's own engine — one dataset carrying every field that was
- * read, plus the closes series as a searchable entry in the pattern library — and
+ * measurement to the app's own engine — nothing is stored: only one temporary query
+ * (the closes series) sits in the pattern library and each confirm replaces it — and
  * paints the reconstructed candlestick chart over «محیط الگو» at exactly the shape
  * and size of this window's picture (the card's stage is reshaped to the same wide
  * strip), keeping it in chartdna_px_overlay so it is back after a reload. The
@@ -125,12 +125,10 @@
      simply closes and the user is back on the app's first page, empty-handed and fine. */
   /* -------------------------------------------- handing the measurement to the engine
    * «تأیید» closes the window, and on the way out it gives the app what was measured:
-   * one dataset in the app's own store carrying every field the picture yielded (the four
-   * prices of each candle, the confidence and the note that explains it, the axis it was
-   * read against, the residuals, the price-tag check, the bar grid) and, in the pattern
-   * library, one entry: the closes the engine actually compares. It is then usable as
-   * the app's query over all the symbols and timeframes the user has selected, with the
-   * app's own «جستجو».
+   * exactly one thing, and only temporarily: the closes the engine compares, as a single
+   * query entry in the pattern library. No dataset is written, nothing shows up under
+   * «مدیریت داده‌ها», and engine 1 can never search inside an uploaded picture — the
+   * picture is the question, not the ground. Every confirm replaces the previous query.
    * One honest limit: the app seeds those lists when it mounts, so a record written now
    * shows up on the page's next load (the pending pattern waits in sessionStorage until
    * then). We never press «جستجو» ourselves.
@@ -249,12 +247,57 @@
       if (tries > 1) guardPatterns(recs, tries - 1);
     }, 900);
   }
-  function selectDataset(id) {
-    let sel = [];
-    try { sel = JSON.parse(localStorage.getItem(SEL) || '[]'); } catch (e) { sel = []; }
-    if (!Array.isArray(sel)) sel = [];
-    if (sel.indexOf(id) < 0) { sel = sel.concat([id]); try { localStorage.setItem(SEL, JSON.stringify(sel)); } catch (e) { } }
-    return sel;
+  /* v35: the app must never search inside uploaded pictures — the image datasets this
+     window used to write (pxrec-*, symbol IMAGE) are removed from the store once, and
+     the search selection is cleaned of them. chartdna_px_datasets_swept marks it done. */
+  (function dropImageDatasets() {
+    const FLAG = 'chartdna_px_datasets_swept';
+    try { if (localStorage.getItem(FLAG)) return; } catch (e) { return; }
+    const done = () => { try { localStorage.setItem(FLAG, new Date().toISOString()); } catch (e) { } };
+    try {
+      const sel = JSON.parse(localStorage.getItem(SEL) || '[]');
+      if (Array.isArray(sel)) {
+        const keep = sel.filter((id) => !/^pxrec-/.test(String(id)) && !/^img-/.test(String(id)));
+        if (keep.length !== sel.length) localStorage.setItem(SEL, JSON.stringify(keep));
+      }
+    } catch (e) { }
+    openDb().then((db) => {
+      let req = null;
+      try { req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll(); } catch (e) { try { db.close(); } catch (e2) { } done(); return; }
+      req.onsuccess = () => {
+        try {
+          const gone = (req.result || []).filter((d) => d && (/^pxrec-/.test(String(d.id)) || d.symbol === 'IMAGE'));
+          if (!gone.length) { db.close(); done(); return; }
+          const tx = db.transaction(STORE, 'readwrite');
+          gone.forEach((d) => tx.objectStore(STORE).delete(d.id));
+          tx.oncomplete = () => { console.info('[ohlc] image datasets removed from the store:', gone.map((d) => d.id).join(', ')); db.close(); done(); };
+          tx.onerror = () => { db.close(); done(); };
+        } catch (e) { try { db.close(); } catch (e2) { } done(); }
+      };
+      req.onerror = () => { db.close(); done(); };
+    }).catch(done);
+  })();
+  /* every confirm replaces the previous image query: the library never collects them */
+  function dropPxPatterns() {
+    try {
+      const raw = localStorage.getItem(PAT);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const keep = list.filter((p) => !(p && typeof p.id === 'string' && /^custom_dna_px_/.test(p.id)));
+          if (keep.length !== list.length) localStorage.setItem(PAT, JSON.stringify(keep));
+        }
+      }
+    } catch (e) { }
+    try {
+      const qraw = sessionStorage.getItem(PAT_PENDING);
+      if (qraw) {
+        let q = JSON.parse(qraw);
+        if (!Array.isArray(q)) q = [q];
+        const keep = q.filter((p) => !(p && typeof p.id === 'string' && /^custom_dna_px_/.test(p.id)));
+        if (keep.length !== q.length) sessionStorage.setItem(PAT_PENDING, JSON.stringify(keep));
+      }
+    } catch (e) { }
   }
   async function writeExtracted() {
     const res = state.result;
@@ -267,53 +310,33 @@
       const id = 'pxrec-' + Date.now().toString(36);
       const name = 'Pixel reconstruction · ' + okBars.length + ' candles';
       const q = res.quality || {}, cal = res.calibration;
-      const ds = window.ChartDNACV.toDataset(res, {
-        id, name, symbol: 'IMAGE', timeframe: '1h',
-        note: 'بازسازی از پیکسل‌ها — ' + res.bars.length + ' کندل، ' + okBars.length +
-          ' قابل اندازه‌گیری، اطمینان میانگین ' + (q.meanConfidence == null ? '—' : q.meanConfidence) +
-          '؛ ' + (cal.modelChoice || '')
-      });
-      /* all of it travels with the record: the app's matcher reads the candles and lets the rest sit there
-         for the report, the library note and any later check of where a number came from */
-      ds.origin = {
-        kind: 'image-window', at: new Date().toISOString(),
-        pixels: state.img ? { width: state.img.naturalWidth, height: state.img.naturalHeight } : null,
-        scale: res.scale || 1, candles: res.bars.length, measured: okBars.length, incomplete: res.missing,
-        meanConfidence: q.meanConfidence == null ? null : q.meanConfidence,
-        needReview: (q.needReview || []).length, usdPerPx: q.usdPerPx,
-        axis: { model: cal.modelChoice, equation: cal.equation, residualUSD: cal.residualUSD, refs: cal.refs, tagCheck: cal.tagCheck },
-        grid: res.geometry ? { pitch: res.geometry.pitch, x0: res.geometry.x0, bars: res.bars.length } : null,
-        dated: res.bars.some((b) => !!b.date)
-      };
-      const db = await openDb();
-      await new Promise((r2, j2) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(ds);
-        tx.oncomplete = r2; tx.onerror = () => j2(tx.error);
-      });
-      db.close();
-      const selected = selectDataset(id);
-      const closes = ds.candles.map((c) => c.close);
+      const closes = okBars.map((b) => b.close);
       const stamp = new Date().toISOString();
+      /* nothing is written into «مدیریت داده‌ها» and no picture is stored anywhere:
+         the measurement lives only as ONE temporary query in the pattern library —
+         engine 1 uses it as the question, never as ground to search in — and the next
+         confirm replaces it */
+      dropPxPatterns();
       const pCloses = {
         id: 'custom_dna_px_' + id, name, category: 'Pixel closes', createdAt: Date.now(),
         points: closes, normalizedPoints: norm(closes),
-        notes: 'بسته‌شونده‌های ' + okBars.length + ' کندلی که از تصویر اندازه‌گیری شد (میانگین اطمینان ' +
+        notes: 'الگوی موقتِ جستجو از تصویر — ' + okBars.length + ' بسته‌شونده (میانگین اطمینان ' +
           (q.meanConfidence == null ? '—' : q.meanConfidence) + '، ' + (cal.modelChoice || '') +
-          '). منبع: ' + stamp
+          '). دیتاستی ذخیره نشده و با تأیید بعدی جایگزین می‌شود. منبع: ' + stamp
       };
       const s1 = appendPattern(pCloses);
       if (s1 !== 'queued-for-next-load') guardPatterns([pCloses], 3);
       const out = {
-        id, name, candles: ds.candles.length, dataset: 'written',
+        id, name, candles: okBars.length, dataset: 'not-stored',
         patterns: [pCloses.id], patternStates: [s1],
-        waitingForLoad: s1 === 'queued-for-next-load', selected, at: stamp
+        waitingForLoad: s1 === 'queued-for-next-load', at: stamp
       };
       window.__ohlcWrite = out;
       state.lastWrite = out;
-      status('به موتور داده شد: یک دیتاست با ' + ds.candles.length + ' کندل و تمام یادداشت‌ها + الگوی بسته‌شونده‌ها در کتابخانه' +
-        (out.waitingForLoad ? ' (کتابخانه هنوز ساخته نشده؛ الگو در بارگذاری بعد ظاهر می‌شود)' : '') +
-        '. در «کتابخانهٔ الگو» با کلید «جستجوی فوری این الگو در تمام نمادها» جستجو می‌شود؛ خودکار جستجو نمی‌کنیم.', 'warn');
+      status('به موتور داده شد: یک الگوی موقت با ' + okBars.length + ' بسته‌شونده در «کتابخانهٔ الگو» (جایگزین الگوی تصویریِ قبلی)' +
+        (out.waitingForLoad ? ' — کتابخانه هنوز ساخته نشده؛ در بارگذاری بعد ظاهر می‌شود' : '') +
+        '. هیچ دیتاستی در «مدیریت داده‌ها» ذخیره نشد و تصویر هم جایی نگه داشته نمی‌شود. ' +
+        'جستجو با کلید «جستجوی فوری این الگو در تمام نمادها» انجام می‌شود؛ خودکار جستجو نمی‌کنیم.', 'warn');
       console.info('[ohlc] handed to the engine:', out);
       return out;
     } catch (err) {
@@ -613,7 +636,7 @@
           r.confirmedCandles = state.result.bars.length;
         }
       } catch (e) { /* our own note */ }
-      state.write = writeExtracted();      /* the engine gets the numbers; never blocks the close */
+      state.write = writeExtracted();      /* the engine gets its temporary query; never blocks the close */
       keepOverlayRecord(overlayRecord()); /* the measured candles, kept for the card and the next load */
       mountOverlay();                     /* and the candle chart is drawn over «محیط الگو» right away */
       status('تأیید شد — ' + state.result.bars.length + ' کندل به موتور داده شد؛ ' +
@@ -855,7 +878,7 @@
   }
 
   window.ChartDnaOhlc = {
-    version: 19,
+    version: 20,
     write: () => state.write,
     frame: () => storedFrame(),
     lastWrite: () => state.lastWrite || null,

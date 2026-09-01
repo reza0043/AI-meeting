@@ -616,56 +616,34 @@ const ok = (name, cond, info) => {
     (win.ChartDnaOhlc.open(), $('ohlc-modal').style.display === 'flex') && $('ohlc-chart').width > 0 &&
     win.ChartDnaOhlc.toCSV().trim().split('\r\n').length === nBars + 1,
     'canvas ' + $('ohlc-chart').width + '×' + $('ohlc-chart').height + ' · csv still ' + nBars + ' rows');
-  ok('confirming opened the app\u2019s store once and pressed nothing itself',
+  ok('confirming never opens the app\u2019s store (the one open was the boot sweep) and presses nothing itself',
     idbLog.opens === 1 && searchClicks === 0, 'IndexedDB opens=' + idbLog.opens + ', app search clicks=' + searchClicks);
   ok('the report carries no trend fields at all',
     !('confirmedTrend' in (win.__ohlcReport || {})) && !('trend' in (win.__ohlcReport || {})),
     Object.keys(win.__ohlcReport || {}).join(','));
 
-  console.log('4) what «تأیید» hands to the engine — the dataset, the library, the selection');
+  console.log('4) what «تأیید» hands to the engine — one temporary query, nothing stored');
   await sleep(300);
   const wr = await win.__ohlcWrite;
   ok('the hand-over finished without an error', !!(wr && !wr.error), JSON.stringify(wr));
-  const rec = idbLog.rec || {};
-  ok('one dataset in the app\u2019s own store, under the app\u2019s own key',
-    idbLog.store === 'market_datasets' && rec.id === wr.id && /^pxrec-/.test(rec.id),
-    'store=' + idbLog.store + ' · id=' + rec.id);
-  ok('it is a market_datasets record with the app\u2019s fields',
-    rec.name === wr.name && rec.symbol === 'IMAGE' && rec.timeframe === '1h' &&
-    rec.source === 'pixel-reconstruction' && typeof rec.note === 'string' && rec.note.length > 20,
-    rec.name + ' · ' + rec.source);
-  ok('every candle carries the four prices, the confidence and the note that explains it',
-    Array.isArray(rec.candles) && rec.candles.length === nOk && rec.candles.every((c) =>
-      typeof c.open === 'number' && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close) &&
-      typeof c.confidence === 'number' && 'notes' in c && c.volume === 0 && !!c.timestamp),
-    (rec.candles || []).length + ' candles · first: ' + JSON.stringify((rec.candles || [])[0]));
-  ok('nothing was left out of what the picture yielded — the axis, the residuals, the tag check',
-    !!(rec.origin && rec.origin.axis && rec.origin.axis.refs && rec.origin.axis.refs.length >= 2 &&
-      rec.origin.axis.equation && typeof rec.origin.pixels.width === 'number' &&
-      rec.origin.candles === nBars && rec.origin.incomplete === (nBars - nOk) &&
-      typeof rec.origin.meanConfidence === 'number' && rec.origin.grid && rec.origin.grid.pitch > 0),
-    JSON.stringify(rec.origin && { candles: rec.origin.candles, measured: rec.origin.measured, usdPerPx: rec.origin.usdPerPx, axis: rec.origin.axis.model }));
-  ok('no trend block rides on the record any more',
-    !('trend' in rec) && !(rec.origin && 'trend' in rec.origin) && !(rec.origin && 'slope' in rec.origin),
-    Object.keys(rec).join(','));
-  ok('the dataset was added to the app\u2019s selection, not written over it',
-    JSON.parse(win.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === wr.id,
+  ok('no dataset is written into the app\u2019s store — the picture is never stored',
+    !idbLog.rec && !idbLog.store && wr.dataset === 'not-stored' && /^pxrec-/.test(wr.id),
+    'rec=' + JSON.stringify(idbLog.rec || null) + ' · dataset=' + wr.dataset);
+  ok('the selection list is untouched: engine 1 gets no image ground to search in',
+    JSON.parse(win.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').length === 0,
     win.localStorage.getItem('chartdna_selected_dataset_ids'));
-  ok('one entry went to the pattern library — the closes; no line entry any more',
-    wr.patterns.length === 1 && wr.patterns[0] === 'custom_dna_px_' + wr.id &&
-    wr.patternStates.length === 1,
+  ok('one temporary query went to the pattern library, replacing any older image query',
+    wr.patterns.length === 1 && wr.patterns[0] === 'custom_dna_px_' + wr.id && wr.patternStates.length === 1,
     wr.patterns.join(' + ') + ' → ' + wr.patternStates.join(','));
-  const pend = JSON.parse(win.sessionStorage.getItem('chartdna_px_pending_pattern') || 'null');
-  ok('this page had no library yet, so both entries wait for the next load instead of clobbering the seed',
-    wr.waitingForLoad === true && Array.isArray(pend) && pend.length === 1 &&
-    pend[0].id === wr.patterns[0],
+  const pend = JSON.parse(win.sessionStorage.getItem('chartdna_px_pending_pattern') || '[]');
+  ok('no library on this page yet: the query waits in the session queue',
+    wr.waitingForLoad === true && Array.isArray(pend) && pend.length === 1 && pend[0].id === wr.patterns[0],
     'queued: ' + (Array.isArray(pend) ? pend.map((x) => x.id).join(' + ') : 'nothing'));
-  const closes = (rec.candles || []).map((c) => c.close);
-  ok('the entry is exactly the closes the engine compares, and nothing about a line',
-    pend[0].points.join() === closes.join() && pend[0].normalizedPoints.length === nOk &&
+  ok('the query is exactly the measured closes, and its note says it is temporary',
+    pend[0].points.length === nOk && pend[0].normalizedPoints.length === nOk &&
     pend[0].normalizedPoints.every((v) => v >= -1.0001 && v <= 1.0001) && pend[0].category === 'Pixel closes' &&
-    !/خط روند|trend/i.test(pend[0].notes || ''),
-    pend[0].points.slice(0, 3).join(', ') + ' … ' + pend[0].points[pend[0].points.length - 1]);
+    /موقت/.test(pend[0].notes || '') && /ذخیره نشده/.test(pend[0].notes || ''),
+    pend[0].points.slice(0, 3).join(', ') + ' …');
   ok('the names keep clear of the sweep that deletes the old image records',
     wr.patterns.every((p) => p.indexOf('img-') !== 0) &&
     !/from image|کادر برنامه|از تصویر/i.test(wr.name) && !/^img-/.test(wr.id),
@@ -736,8 +714,8 @@ const ok = (name, cond, info) => {
     lib2.length === 2 && lib2[0].id === 'builtin_1' && lib2[1].id === wr2.patterns[0] &&
     !lib2.some((p) => /_trend$/.test(p.id)),
     lib2.map((p) => p.id + '(' + (p.points || []).length + ')').join(' '));
-  ok('the selection grows instead of being replaced',
-    JSON.parse(w2.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === 'ds-user-1,' + wr2.id,
+  ok('the user\u2019s own selection stays exactly as it was — no image dataset joins it',
+    w2.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1"]',
     w2.localStorage.getItem('chartdna_selected_dataset_ids'));
   ok('the overlay keeps the window\u2019s picture size as its ceiling: it fits the card, never outgrows the frame', (() => {
     const o = d2.getElementById('ohlc-trend-overlay');
@@ -759,7 +737,7 @@ const ok = (name, cond, info) => {
   ok('a write-back from the app does not cost us our entry',
     lib3.length === 2 && lib3.some((p) => p.id === wr2.patterns[0]) &&
     lib3[0].id === 'builtin_1', lib3.map((p) => p.id).join(' | '));
-  ok('and that page was fed too: the store was opened once more, no more', idbLog.opens === 2, 'opens=' + idbLog.opens);
+  ok('the second page opened the store once too — its own boot sweep, nothing else', idbLog.opens === 2, 'opens=' + idbLog.opens);
   ok('still no click on «جستجو» from us in either page', searchClicks === 0, searchClicks + ' clicks');
   try { dom2.window.close(); } catch (e) { }
 
