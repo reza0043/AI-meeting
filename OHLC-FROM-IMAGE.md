@@ -710,3 +710,28 @@ viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">`)، با
 (۱۲۸ سنجه).
 
 **برگشت:** `git revert <این کامیت>`؛ v34 = `git revert 6085298`.
+
+## v36 — search methods as checkboxes (chart-dna-methods.js)
+
+The four weight sliders («وزن‌دهی فرمول» tab) are gone; Engine-1 search methods are now
+user-ticked checkboxes injected into the «پارامترهای جستجو» pane (card `#dna-methods-card`).
+
+- Bundle patches: **P21** routes all 3 matcher call sites (`analyzeMultiDatasets` ×1,
+  `findMatchesInCustomPatterns` ×2) through `window.__dnaHook(yn)`, so the hook wraps the
+  statics before the first search; **P22** unrenders the weights tab button and pane (`!1&&`).
+- New script `chart-dna-methods.js` (?v=36, defer, precached). Ticks persist in
+  localStorage `chartdna_search_methods` (JSON). Defaults: pearson/dtw/slope/extrema ON;
+  ohlc4/anatomy/multiscale/fastscan OFF.
+- Methods 1–4 map to `config.weights` as equal shares of the ticked set (pearson-only
+  fallback when none of the four is ticked).
+- Method 5 (four-channel OHLC) and 6 (candle anatomy) re-score each hit against the
+  confirmed image query in localStorage `chartdna_px_overlay` (50/50 blend into
+  `similarity`, threshold re-applied); silently skipped when no image query exists.
+- Method 7 (multi-scale) runs the original matcher at patternLength ×0.75 / ×1 / ×1.3 and
+  dedupes overlapping ranges (>50 % overlap keeps the best).
+- Method 8 (fast screen) on datasets ≥3000 candles: coarse Pearson pass on every-4th
+  close, candidate regions expanded/merged, original matcher run on slices, indices
+  offset back.
+- Kill switch: `localStorage.chartdna_methods='0'` → hook returns the matcher untouched
+  (original config weights, no card). Seam: `window.ChartDnaMethods` (v36).
+- Revert: `git revert <v36 commit>`.

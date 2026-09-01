@@ -462,7 +462,7 @@ const ok = (name, cond, info) => {
     (html.match(/chart-[\w-]+\.js\?v=\d+/g) || []).join(' | '));
   const tags = (html.match(/chart-(?:ohlc|dna)-[\w-]+\.js\?v=(\d+)/g) || []).map((s) => s.slice(-2)).concat(
     (sw.match(/chart-(?:ohlc|dna)-[\w-]+\.js\?v=(\d+)/g) || []).map((s) => s.slice(-2)));
-  ok('page and worker agree on one build tag', new Set(tags).size === 1 && tags.length === 6, 'v=' + tags.join(','));
+  ok('page and worker agree on one build tag', new Set(tags).size === 1 && tags.length === 8, 'v=' + tags.join(','));
   const ver = (sw.match(/VERSION = "([^"]+)"/) || [])[1] || '';
   ok('the worker version is a named build that moves with the tag',
     /^chartdna-v\d+\.\d+\.\d+-[a-z0-9-]+$/.test(ver) && ver.indexOf('-') > 0, ver);
