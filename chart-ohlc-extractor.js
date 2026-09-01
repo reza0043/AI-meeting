@@ -332,7 +332,7 @@
    * line since v28 — and the record is kept in localStorage (chartdna_px_overlay —
    * outside every sweep pattern) so the chart is back on the card after a reload,
    * without touching React. localStorage.chartdna_trend_overlay = '0' drops it. */
-  const OV = 'ohlc-trend-overlay', OV_OFF = 'chartdna_trend_overlay', OV_STORE = 'chartdna_px_overlay';
+  const OV = 'ohlc-trend-overlay', OV_OFF = 'chartdna_trend_overlay', OV_STORE = 'chartdna_px_overlay', OV_FRAME = 'chartdna_px_frame';
   const ovOn = () => { try { return localStorage.getItem(OV_OFF) !== '0'; } catch (e) { return true; } };
   const cropCard = () => document.getElementById('image-cropper-card');
   /* what the chart is drawn from: the measured candles + the fitted line, nothing else.
@@ -370,9 +370,21 @@
   function keepOverlayRecord(rec) {
     state.ovData = rec || null;
     try {
-      if (rec) localStorage.setItem(OV_STORE, JSON.stringify(rec));
+      if (rec) {
+        localStorage.setItem(OV_STORE, JSON.stringify(rec));
+        /* the window's frame is kept on its own and survives a cleared chart: the card
+           must hold the «ورود تصویر» shape from the moment the app opens */
+        if (rec.frame && rec.frame.w > 40 && rec.frame.h > 30) localStorage.setItem(OV_FRAME, JSON.stringify(rec.frame));
+      }
       else localStorage.removeItem(OV_STORE);
     } catch (e) { /* quota: the chart still lives for this session */ }
+  }
+  function storedFrame() {
+    if (state.ovData && state.ovData.frame && state.ovData.frame.w > 40) return state.ovData.frame;
+    try {
+      const fr = JSON.parse(localStorage.getItem(OV_FRAME) || 'null');
+      return fr && fr.w > 40 && fr.h > 30 ? fr : null;
+    } catch (e) { return null; }
   }
   (function loadStoredOverlay() {
     try {
@@ -385,7 +397,7 @@
   function removeOverlay() {
     const cv = document.getElementById(OV);
     if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
-    unshapeStage();
+    if (!ovOn()) unshapeStage();   /* the kill switch restores the card; a cleared chart keeps its shape */
     if (state.ovWatch) { try { clearInterval(state.ovWatch); } catch (e) { } state.ovWatch = null; }
   }
   /* «محیط الگو» must carry the same shape as the «ورود تصویر» window — a wide strip, not
@@ -552,6 +564,30 @@
     }
     return paintOverlay();
   }
+  /* the card takes the «ورود تصویر» shape from the moment the app opens — with or
+     without a chart on it. The frame survives in chartdna_px_frame, so even a cleared
+     chart or a fresh load starts with the window-shaped card; a light guard re-applies
+     it whenever React rebuilds the card. localStorage.chartdna_trend_overlay='0' stops
+     it and puts everything back. */
+  (function shapeCardFromBoot() {
+    const apply = () => {
+      try {
+        if (!ovOn()) return false;
+        const fr = storedFrame();
+        return fr ? shapeStage(fr) != null : false;
+      } catch (e) { return false; }
+    };
+    if (!storedFrame()) return;
+    const boot = setInterval(() => {
+      if (!ovOn()) { clearInterval(boot); return; }
+      if (apply()) {
+        clearInterval(boot);
+        try { new ResizeObserver(apply).observe(document.body); } catch (e) { }
+        setInterval(apply, 1200);   /* cheap: early-exits when the shape already holds */
+      }
+    }, 150);
+    setTimeout(() => clearInterval(boot), 60000);
+  })();
   /* a chart confirmed before this load: back on the card as soon as React has built it —
      a fast boot keeps the big-then-small flash of the card as short as it can be */
   (function remountStoredOverlay() {
@@ -823,6 +859,7 @@
   window.ChartDnaOhlc = {
     version: 19,
     write: () => state.write,
+    frame: () => storedFrame(),
     lastWrite: () => state.lastWrite || null,
     overlay: (v) => setOverlay(v !== false),
     overlayData: () => state.ovData || null,
