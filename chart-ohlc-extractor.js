@@ -323,7 +323,24 @@
   const OV = 'ohlc-trend-overlay', OV_OFF = 'chartdna_trend_overlay', OV_STORE = 'chartdna_px_overlay';
   const ovOn = () => { try { return localStorage.getItem(OV_OFF) !== '0'; } catch (e) { return true; } };
   const cropCard = () => document.getElementById('image-cropper-card');
-  /* what the chart is drawn from: the measured candles + the fitted line, nothing else */
+  /* what the chart is drawn from: the measured candles + the fitted line, nothing else.
+   * `frame` is the exact on-screen size of the picture inside the «ورود تصویر» window at
+   * the moment of «تأیید» (object-fit contain inside the view canvas): the chart over
+   * «محیط الگو» is drawn at that size — smaller if the card is smaller, never bigger. */
+  function viewFrame() {
+    const box = frameBox();
+    const ids = ['ohlc-chart', 'ohlc-orig', 'ohlc-ann'];
+    for (let i = 0; i < ids.length; i++) {
+      const cv = $(ids[i]);
+      if (!cv) continue;
+      const r = cv.getBoundingClientRect();
+      if (r && r.width > 40 && r.height > 30) {
+        const k = Math.min(r.width / box.w, r.height / box.h);
+        return { w: Math.max(1, Math.round(box.w * k)), h: Math.max(1, Math.round(box.h * k)) };
+      }
+    }
+    return { w: box.w, h: box.h };
+  }
   function overlayRecord() {
     const res = state.result, tr = state.trend;
     if (!res || !res.ok || !tr || !tr.ok) return null;
@@ -338,6 +355,7 @@
     }));
     return {
       at: new Date().toISOString(),
+      frame: viewFrame(),
       candles,
       trend: {
         n: tr.n, slope: tr.slope, r2: tr.r2, start: tr.start, end: tr.end,
@@ -373,9 +391,15 @@
     const stage = card ? (card.querySelector('canvas') || card) : null;
     const r = stage ? stage.getBoundingClientRect() : null;
     if (!r || !dat || !dat.candles || !dat.candles.length || !(r.width > 60) || !(r.height > 40)) { cv.style.display = 'none'; return false; }
-    const w = Math.round(r.width), h = Math.round(r.height);
+    /* the window's picture size is the ceiling: the chart takes exactly that frame,
+       shrinks with the card when the card is smaller, and never grows past it */
+    const stW = Math.round(r.width), stH = Math.round(r.height);
+    const fr = dat.frame && dat.frame.w > 40 && dat.frame.h > 30 ? dat.frame : { w: stW, h: stH };
+    const k = Math.min(1, stW / fr.w, stH / fr.h);
+    const w = Math.max(1, Math.round(fr.w * k)), h = Math.max(1, Math.round(fr.h * k));
     cv.style.display = 'block';
-    cv.style.left = Math.round(r.left) + 'px'; cv.style.top = Math.round(r.top) + 'px';
+    cv.style.left = Math.round(r.left + (stW - w) / 2) + 'px';
+    cv.style.top = Math.round(r.top + (stH - h) / 2) + 'px';
     cv.style.width = w + 'px'; cv.style.height = h + 'px';
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     const ctx = cv.getContext('2d');

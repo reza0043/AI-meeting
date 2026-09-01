@@ -763,9 +763,17 @@ const ok = (name, cond, info) => {
   ok('the selection grows instead of being replaced',
     JSON.parse(w2.localStorage.getItem('chartdna_selected_dataset_ids') || '[]').join() === 'ds-user-1,' + wr2.id,
     w2.localStorage.getItem('chartdna_selected_dataset_ids'));
-  ok('the overlay follows that page\u2019s crop window, at its rect', (() => {
+  ok('the overlay keeps the window\u2019s picture size as its ceiling: it fits the card, never outgrows the frame', (() => {
     const o = d2.getElementById('ohlc-trend-overlay');
-    return !!o && o.width === 520 && o.height === 260 && o.style.left === '8px' && o.style.top === '12px';
+    let rec = null;
+    try { rec = JSON.parse(w2.localStorage.getItem('chartdna_px_overlay') || 'null'); } catch (e) { return false; }
+    if (!o || !rec || !rec.frame || !(rec.frame.w > 40)) return false;
+    /* the crop stage is 520×260 at 8,12; the chart takes min(1, fit) of the frame, centred */
+    const k = Math.min(1, 520 / rec.frame.w, 260 / rec.frame.h);
+    const ew = Math.round(rec.frame.w * k), eh = Math.round(rec.frame.h * k);
+    return o.width === ew && o.height === eh && ew <= 520 && eh <= 260 &&
+      o.style.left === Math.round(8 + (520 - ew) / 2) + 'px' &&
+      o.style.top === Math.round(12 + (260 - eh) / 2) + 'px';
   })(), (function () { const o = d2.getElementById('ohlc-trend-overlay'); return o ? o.width + '×' + o.height + ' @' + o.style.left + ',' + o.style.top : 'no overlay'; })());
   /* React would persist its own copy of the library on any change, rolling our write back:
      the bounded re-append has to survive exactly that */
