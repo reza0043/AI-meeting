@@ -115,7 +115,7 @@
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, write: null, ovData: null, shapedStage: null };
+  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, write: null, ovData: null, shapedStage: null, shapedCard: null };
 
   /* ------------------------------------------------------------ open/close */
   const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
@@ -412,25 +412,49 @@
     if (!(w > 60)) return null;
     const want = Math.round(Math.min(w, fr.w) * fr.h / fr.w);
     if (!stage.__dnaShaped) {
-      stage.__dnaShaped = { height: stage.style.height, minHeight: stage.style.minHeight, maxHeight: stage.style.maxHeight };
+      stage.__dnaShaped = { height: stage.style.height, minHeight: stage.style.minHeight, maxHeight: stage.style.maxHeight, flex: stage.style.flex };
       state.shapedStage = stage;
     }
     if (stage.style.height !== want + 'px') {
+      /* the stage is a flex-1 item: without pinning flex, the card's own height keeps
+         deciding — so the stage is frozen at the frame's aspect and stops growing */
+      stage.style.flex = '0 0 auto';
       stage.style.height = want + 'px';
       stage.style.minHeight = '0';
       stage.style.maxHeight = want + 'px';
     }
+    /* the card itself carries fixed Tailwind heights (min-h-[300px] h-[330px] …): with
+       the stage frozen, the card is let go to hug its content, so no empty band is
+       left under the chart — inline style beats the classes, and both are restored */
+    const card = cropCard();
+    if (card && card !== stage) {
+      if (!card.__dnaShaped) card.__dnaShaped = { height: card.style.height, minHeight: card.style.minHeight };
+      if (card.style.height !== 'auto') { card.style.height = 'auto'; card.style.minHeight = '0'; }
+      state.shapedCard = card;
+    }
     return want;
   }
   function unshapeStage() {
+    let did = false;
     const stage = state.shapedStage || cropStageBox();
-    if (!stage || !stage.__dnaShaped) return false;
-    stage.style.height = stage.__dnaShaped.height;
-    stage.style.minHeight = stage.__dnaShaped.minHeight;
-    stage.style.maxHeight = stage.__dnaShaped.maxHeight;
-    delete stage.__dnaShaped;
-    state.shapedStage = null;
-    return true;
+    if (stage && stage.__dnaShaped) {
+      stage.style.height = stage.__dnaShaped.height;
+      stage.style.minHeight = stage.__dnaShaped.minHeight;
+      stage.style.maxHeight = stage.__dnaShaped.maxHeight;
+      stage.style.flex = stage.__dnaShaped.flex;
+      delete stage.__dnaShaped;
+      state.shapedStage = null;
+      did = true;
+    }
+    const card = state.shapedCard || cropCard();
+    if (card && card.__dnaShaped) {
+      card.style.height = card.__dnaShaped.height;
+      card.style.minHeight = card.__dnaShaped.minHeight;
+      delete card.__dnaShaped;
+      state.shapedCard = null;
+      did = true;
+    }
+    return did;
   }
   function paintOverlay() {
     const cv = document.getElementById(OV);
