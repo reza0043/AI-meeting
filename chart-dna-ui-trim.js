@@ -32,6 +32,8 @@
  *                                                         and its file input come back
  *                           chartdna_engine2 = '1'      -> engine-2 controls are left alone
  *                                                         (only useful on an old cached bundle)
+ *                           chartdna_refpts = '1'       -> the pts badge and the reference-price
+ *                                                         control are left alone
  */
 (() => {
   const OFF = 'chartdna_ui_trim';
@@ -405,6 +407,93 @@
     return n;
   }
 
+  /* ------------------------------- v32: the pts badge and the reference price
+   * Both belonged to engine 2. The «pts» badge (تعداد نقاط شباهت) sat on «محیط الگو»
+   * and on «اطلاعات الگوی کشف شده»; the reference-price control (قیمت مرجع + تنظیم)
+   * fed the removed pixel calibration. Their computation is cut at the root inside the
+   * bundle (referencePrice:0, onUpdateReferencePrice:()=>{} — patches P9-P11); this
+   * block hides what React still draws of them. localStorage.chartdna_refpts = '1'
+   * leaves them alone / brings them back. */
+  const RP_OFF = 'chartdna_refpts';
+  const rpOn = () => { try { return localStorage.getItem(RP_OFF) !== '1'; } catch (e) { return true; } };
+  const rpNodes = [];
+  const RP_PTS = /^[\d\u06F0-\u06F9,\u066C'\u2019\s]*pts$/;
+  const RP_TEXT = ['قیمت مرجع', 'Reference Price', 'Ref:'];
+  function rpHide(el, why) {
+    if (!el || el.__dnaRpOff) return false;
+    el.__dnaRpOff = true;
+    el.setAttribute('data-dna-refpts', 'off');
+    el.setAttribute('aria-hidden', 'true');
+    el.style.setProperty('display', 'none', 'important');
+    if (el.tagName === 'BUTTON') el.disabled = true;
+    if (rpNodes.indexOf(el) < 0) rpNodes.push(el);
+    log('ref-price/pts control hidden by ' + why + (el.id ? ': #' + el.id : ''));
+    return true;
+  }
+  function rpBack() {
+    for (let i = 0; i < rpNodes.length; i++) {
+      const el = rpNodes[i];
+      if (!el || !el.isConnected) continue;
+      el.style.removeProperty('display');
+      el.removeAttribute('aria-hidden'); el.removeAttribute('data-dna-refpts');
+      if (el.tagName === 'BUTTON') el.disabled = false;
+      delete el.__dnaRpOff;
+    }
+    const n = rpNodes.length;
+    rpNodes.length = 0;
+    return n;
+  }
+  function refWording(t) {
+    for (let k = 0; k < RP_TEXT.length; k++) if (t.indexOf(RP_TEXT[k]) === 0) return true;
+    return false;
+  }
+  function killRefPts() {
+    if (!on()) return 0;
+    if (!rpOn()) return -rpBack();
+    let n = 0;
+    const spans = document.querySelectorAll('span');
+    for (let i = 0; i < spans.length; i++) {
+      const el = spans[i];
+      if (el.__dnaRpOff) continue;
+      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!t) continue;
+      /* the pts badge — its own span, wherever the app draws it with the cyan chip
+         classes; inside «محیط الگو» wording alone is enough for older builds */
+      if (RP_PTS.test(t) && (/bg-cyan-950/.test(el.className || '') || (el.closest && el.closest('#image-cropper-card')))) {
+        if (rpHide(el, 'pts badge')) n++;
+        continue;
+      }
+      /* the reference-price row: take its small wrapper when that is safe, else
+         the labelling span and the value next to it */
+      if (!refWording(ownText(el))) continue;
+      let w = null;
+      try { w = el.closest('div'); } catch (e) { w = null; }
+      if (w && !tooBig(w) && (w.textContent || '').length < 120 && !w.querySelector('input[type="file"]')) {
+        if (rpHide(w, 'ref-price row')) n++;
+      } else {
+        if (rpHide(el, 'ref-price label')) n++;
+        const sib = el.nextElementSibling;
+        if (sib && sib.tagName === 'SPAN' && (sib.textContent || '').length < 40 && rpHide(sib, 'ref-price value')) n++;
+      }
+    }
+    /* the «تنظیم» / Edit keys carry the wording in their title */
+    const acts = document.querySelectorAll('button[title], a[title], span[title]');
+    for (let i = 0; i < acts.length; i++) {
+      const el = acts[i];
+      if (el.__dnaRpOff) continue;
+      const ti = el.getAttribute('title') || '';
+      if (!/قیمت مرجع|Reference Price/.test(ti)) continue;
+      if ((el.textContent || '').trim().length <= 12 && rpHide(el, 'ref-price key')) n++;
+    }
+    /* re-assert what a re-render un-hid */
+    for (let i = 0; i < rpNodes.length; i++) {
+      const el = rpNodes[i];
+      if (el && el.isConnected && el.style.display !== 'none') { el.style.setProperty('display', 'none', 'important'); n++; }
+    }
+    if (n) log('ref-price/pts leftovers hidden:', n);
+    return n;
+  }
+
   /* --------------------------------------------------------------- the data sweep */
   function dropOurPatterns() {
     let removed = 0;
@@ -523,6 +612,7 @@
     killCropUpload();
     killEngine2();
     hideOverlays(true);
+    killRefPts();
     sweep();
     /* the app mounts after us and re-renders, so keep watching; our own writes
        are attribute/childList-free for the observer so this cannot loop */
@@ -530,20 +620,20 @@
     const again = () => {
       if (queued) return;
       queued = true;
-      (window.requestAnimationFrame || function (f) { return setTimeout(f, 32); })(() => { queued = false; dropOwnCard(); killCropUpload(); killEngine2(); hideOverlays(); });
+      (window.requestAnimationFrame || function (f) { return setTimeout(f, 32); })(() => { queued = false; dropOwnCard(); killCropUpload(); killEngine2(); killRefPts(); hideOverlays(); });
     };
     try {
       const mo = new MutationObserver(again);
       mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch (e) { }
     /* the app mounts after us and may rebuild these panels later */
-    const settle = setInterval(() => { dropOwnCard(); killCropUpload(); killEngine2(); hideOverlays(true); }, 600);
+    const settle = setInterval(() => { dropOwnCard(); killCropUpload(); killEngine2(); killRefPts(); hideOverlays(true); }, 600);
     setTimeout(() => clearInterval(settle), 20000);
   }
   if (document.body) run(); else document.addEventListener('DOMContentLoaded', run);
 
   window.ChartDnaUiTrim = {
-    version: 6,
+    version: 7,
     titles: TITLES.slice(),
     ids: IDS.slice(),
     cropText: CROP_TEXT.slice(),
@@ -558,6 +648,10 @@
     engine2Pass: () => killEngine2(),
     engine2On: () => { try { localStorage.setItem(E2_OFF, '1'); } catch (e) { } return e2Back(); },
     engine2Off: () => { try { localStorage.removeItem(E2_OFF); } catch (e) { } return killEngine2(); },
+    refptsNodes: () => rpNodes.slice(),
+    refptsPass: () => killRefPts(),
+    refptsOn: () => { try { localStorage.setItem(RP_OFF, '1'); } catch (e) { } return rpBack(); },
+    refptsOff: () => { try { localStorage.removeItem(RP_OFF); } catch (e) { } return killRefPts(); },
     sweep: () => sweep(true),
     hidden: () => panels.length,
     off: () => { try { localStorage.setItem(OFF, '0'); } catch (e) { } }

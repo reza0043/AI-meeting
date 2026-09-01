@@ -362,10 +362,37 @@ const ok = (name, cond, info) => {
   ok('the crop surface is left alone', doc.getElementById('crop-view').style.display === 'none' &&
     !doc.getElementById('crop-view').hasAttribute('hidden') && doc.getElementById('app-canvas').style.display !== 'none',
     'canvas kept, its wrapper untouched');
-  ok('the card header, the reference-price control and the status strip are untouched',
-    doc.getElementById('crop-head').style.display !== 'none' && doc.getElementById('btn-ref').style.display !== 'none' &&
+  ok('the card header and the status strip are untouched',
+    doc.getElementById('crop-head').style.display !== 'none' &&
     doc.getElementById('crop-status').style.display !== 'none' && doc.getElementById('crop-stage').style.display !== 'none',
-    'head, btn-ref, status, stage visible');
+    'head, status, stage visible');
+  /* v32: the pts badge and the reference-price control are engine-2 leftovers — gone */
+  const ptsSpan = (function () {
+    const list = doc.querySelectorAll('#image-cropper-card span');
+    for (let i = 0; i < list.length; i++) if (/pts$/.test((list[i].textContent || '').trim())) return list[i];
+    return null;
+  })();
+  ok('the «pts» badge on «محیط الگو» is hidden',
+    !!ptsSpan && ptsSpan.style.display === 'none' && ptsSpan.getAttribute('data-dna-refpts') === 'off',
+    ptsSpan ? 'display=' + ptsSpan.style.display : 'badge not found');
+  const refLabel = (function () {
+    const list = doc.querySelectorAll('#image-cropper-card span');
+    for (let i = 0; i < list.length; i++) if (/^قیمت مرجع/.test((list[i].textContent || '').trim())) return list[i];
+    return null;
+  })();
+  ok('the reference-price label, its value and its «تنظیم» key are hidden',
+    !!refLabel && refLabel.style.display === 'none' &&
+    refLabel.nextElementSibling.style.display === 'none' &&
+    doc.getElementById('btn-ref').style.display === 'none' && doc.getElementById('btn-ref').disabled === true,
+    'label=' + (refLabel ? refLabel.style.display : '?') + ' btn-ref=' + doc.getElementById('btn-ref').style.display);
+  ok('chartdna_refpts=1 brings them back, and one call takes them off again',
+    (function () {
+      const back = win.ChartDnaUiTrim.refptsOn();
+      const visible = doc.getElementById('btn-ref').style.display !== 'none' && ptsSpan.style.display !== 'none';
+      win.localStorage.removeItem('chartdna_refpts');
+      const off = win.ChartDnaUiTrim.refptsOff();
+      return back >= 3 && visible && off >= 3 && doc.getElementById('btn-ref').style.display === 'none' && ptsSpan.style.display === 'none';
+    })(), 'refptsNodes=' + win.ChartDnaUiTrim.refptsNodes().length);
   ok('the card itself is still there', doc.getElementById('image-cropper-card').style.display !== 'none');
   ok('the file input of the card is disabled', inp.disabled === true && inp.getAttribute('data-dna-off') === '1',
     'disabled=' + inp.disabled);

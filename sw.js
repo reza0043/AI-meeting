@@ -1,12 +1,12 @@
 /* Chart DNA — Service Worker */
-const VERSION = "chartdna-v2.31.0-window-shaped-from-boot";
+const VERSION = "chartdna-v2.32.0-no-pts-no-refprice";
 const CACHE_NAME = `${VERSION}`;
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "chart-ohlc-extractor.js?v=31",
-  "chart-ohlc-engine.js?v=31",
-  "chart-dna-ui-trim.js?v=31",
+  "chart-ohlc-extractor.js?v=32",
+  "chart-ohlc-engine.js?v=32",
+  "chart-dna-ui-trim.js?v=32",
   "manifest.webmanifest",
   "icons/icon-192x192.png",
   "icons/icon-512x512.png",
