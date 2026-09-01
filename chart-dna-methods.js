@@ -304,6 +304,59 @@
     return wrapMatcher(M);
   };
 
+  /* ---------- v37: green play runs Engine-1 on the confirmed image pattern ---------- */
+
+  var PLAY_OFF = 'chartdna_pxplay'; // kill switch: '0' -> original play behaviour
+  function playOn() {
+    try { return localStorage.getItem(PLAY_OFF) !== '0'; } catch (e) { return true; }
+  }
+
+  // closes of the confirmed Engine-3 pattern (chartdna_px_overlay) — the play button's
+  // fallback reference (bundle P23) and its render-time presence check (bundle P24)
+  var pxCache = { at: 0, val: null };
+  window.__pxQuery = function () {
+    if (!playOn()) return null;
+    var now = Date.now();
+    if (now - pxCache.at < 800) return pxCache.val;
+    var v = null;
+    try {
+      var raw = localStorage.getItem(OV_STORE);
+      if (raw) {
+        var rec = JSON.parse(raw);
+        if (rec && rec.candles && rec.candles.length > 5) {
+          v = [];
+          for (var i = 0; i < rec.candles.length; i++) {
+            var c = rec.candles[i];
+            var x = Number(c.c != null ? c.c : c.close);
+            if (isFinite(x)) v.push(x);
+          }
+          if (v.length < 6) v = null;
+        }
+      }
+    } catch (e) {}
+    pxCache = { at: now, val: v };
+    return v;
+  };
+
+  function analyzing() {
+    var st = document.getElementById('btn-stop-analysis');
+    return !!(st && !st.disabled);
+  }
+
+  // React only recomputes hasPattern on its next render; until then we un-disable the
+  // play button ourselves so the confirmed image pattern is immediately searchable
+  function armPlay() {
+    if (!playOn()) return;
+    var b = document.getElementById('btn-start-analysis');
+    if (!b || analyzing()) return;
+    if (b.disabled && window.__pxQuery()) {
+      b.disabled = false;
+      b.style.opacity = '1';
+      b.style.cursor = 'pointer';
+      b.setAttribute('data-dna-pxplay', 'armed');
+    }
+  }
+
   /* ---------- settings-panel checkbox card ---------- */
 
   var CARD_ID = 'dna-methods-card';
@@ -394,10 +447,13 @@
       var mo = new MutationObserver(function () {
         var c = document.getElementById(CARD_ID);
         if (!c || !c.isConnected) ensureCard();
+        armPlay();
       });
-      mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
+      mo.observe(document.body || document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
     } catch (e) {}
     ensureCard();
+    armPlay();
+    try { setInterval(armPlay, 1500); } catch (e) {}
   }
 
   if (document.readyState === 'loading') {
@@ -406,8 +462,10 @@
 
   /* test seam */
   window.ChartDnaMethods = {
-    version: 36,
+    version: 37,
     enabled: enabled,
+    playOn: playOn,
+    armPlay: armPlay,
     getTicks: getTicks,
     setTick: setTick,
     mapWeights: mapWeights,

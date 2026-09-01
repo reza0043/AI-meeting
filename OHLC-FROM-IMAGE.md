@@ -735,3 +735,23 @@ user-ticked checkboxes injected into the «پارامترهای جستجو» pan
 - Kill switch: `localStorage.chartdna_methods='0'` → hook returns the matcher untouched
   (original config weights, no card). Seam: `window.ChartDnaMethods` (v36).
 - Revert: `git revert <v36 commit>`.
+
+## v37 — green play searches the Engine-3 image pattern (px-play)
+
+The play button (`#btn-start-analysis`) used to depend on the removed Engine-2 state
+(`W`); now it runs Engine 1 on the pattern confirmed from the uploaded image.
+
+- **P23**: the play handler falls back to `window.__pxQuery()` (closes of the confirmed
+  `chartdna_px_overlay` record) when the app has no extracted pattern, adopts it into app
+  state (`ee(q)` + pattern title), then runs the ORIGINAL `Je` pipeline — custom-library +
+  TA-Lib + `analyzeMultiDatasets`, all through the v36 `__dnaHook` (ticked methods),
+  results rendered in «اطلاعات الگوی کشف شده» and the results list as before.
+- **P24**: `hasPattern` is also true when `window.__pxQuery()` returns a pattern, so
+  re-renders keep the button enabled natively.
+- Script side (`chart-dna-methods.js`, seam v37): `window.__pxQuery` (cached ~0.8 s),
+  `armPlay()` un-disables the button between React renders (MutationObserver on
+  `disabled` + 1.5 s interval); never touches the button while an analysis is running
+  (`#btn-stop-analysis` enabled) and never enables it without a confirmed pattern.
+- Kill switch: `localStorage.chartdna_pxplay='0'` → `__pxQuery` returns null, P23/P24
+  fall back to original behaviour, button untouched.
+- Revert: `git revert <v37 commit>`.
