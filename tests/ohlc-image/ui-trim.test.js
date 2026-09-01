@@ -306,14 +306,15 @@ const ok = (name, cond, info) => {
     pats.some((p) => p.id === 'custom_dna_px_pxrec-aa11') && !pats.some((p) => /_trend$/.test(p.id)) &&
     !!win.localStorage.getItem('chartdna_px_trend_swept'),
     pats.map((p) => p.id).join(' | '));
-  ok('our dataset is deleted from the app store', log.deleted.length === 1 && log.deleted[0] === 'img-882827-1t1fl8c',
+  ok('both image datasets are deleted from the app store — ours by the trim, the pxrec one by the extractor (v35)',
+    log.deleted.length === 2 && log.deleted.indexOf('img-882827-1t1fl8c') >= 0 && log.deleted.indexOf('pxrec-aa11') >= 0,
     'deleted: ' + JSON.stringify(log.deleted));
   ok('the user dataset was not touched', log.deleted.indexOf('ds-user-1') < 0);
-  ok('and neither is the freshly measured one', log.deleted.indexOf('pxrec-aa11') < 0,
-    'deleted: ' + JSON.stringify(log.deleted));
-  ok('it is dropped from the selection too',
-    win.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1","pxrec-aa11"]',
+  ok('the selection keeps only the user\u2019s dataset — engine 1 gets no image ground',
+    win.localStorage.getItem('chartdna_selected_dataset_ids') === '["ds-user-1"]',
     win.localStorage.getItem('chartdna_selected_dataset_ids'));
+  ok('the extractor\u2019s dataset sweep stamps itself too', !!win.localStorage.getItem('chartdna_px_datasets_swept'),
+    win.localStorage.getItem('chartdna_px_datasets_swept'));
   ok('the reference price we set is removed', win.localStorage.getItem('chartdna_reference_price') === null,
     JSON.stringify(win.localStorage.getItem('chartdna_reference_price')));
   const rest = [];
@@ -327,6 +328,7 @@ const ok = (name, cond, info) => {
   const log2 = { deleted: [] };
   const seed2 = {
     'chartdna_ui_trim_swept': '2026-08-30T00:00:00.000Z',
+    'chartdna_px_datasets_swept': '2026-08-30T00:00:00.000Z',
     'chartdna_saved_patterns': JSON.stringify([{ id: 'img-x', name: 'Image H1 (from image)' }])
   };
   const dom2 = await load(seed2, DATASETS, log2);
@@ -338,10 +340,10 @@ const ok = (name, cond, info) => {
     doc2.querySelector('[data-panel="stats"]').style.display === 'none', 'card gone, both panels hidden');
 
   const log3 = { deleted: [] };
-  const dom3 = await load({ 'chartdna_ui_trim': '0' }, DATASETS, log3);
+  const dom3 = await load({ 'chartdna_ui_trim': '0', 'chartdna_px_datasets_swept': 'done' }, DATASETS, log3);
   await sleep(700);
   const doc3 = dom3.window.document;
-  ok('one switch turns the whole script off',
+  ok('one switch turns the whole trim script off (the extractor\u2019s own sweep has its own flag)',
     doc3.querySelector('[data-panel="overlay"]').style.display !== 'none' && doc3.querySelector('[data-panel="stats"]').style.display !== 'none' &&
     !!doc3.getElementById('ohlc-auto-card') && log3.deleted.length === 0,
     'panels visible, card kept, store untouched');
