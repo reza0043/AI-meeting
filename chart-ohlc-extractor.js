@@ -11,18 +11,21 @@
  * strip), keeping it in chartdna_px_overlay so it is back after a reload. The
  * search itself stays the
  * app's action: this window never presses «جستجو» for the user and never reloads.
- * It has no button of its own: the app's picture-icon key in the recorder-like play
- * strip (#btn-import-image, «ورود تصویر چارت») opens this environment instead of the
- * device storage, and the screenshot is chosen here. The key keeps its icon, name and
- * markup; only where it leads is different (see the deck block near the bottom).
+ * The panel is a permanent part of the main page: it sits at the top of «محیط الگو»
+ * in the sidebar, so there is no opener key any more (the old #btn-import-image key
+ * in the deck strip is hidden). The screenshot is picked right here in the panel.
  * Everything happens in the browser: no image and no number leaves the page.
  */
 (() => {
   const STYLE = `
-  #ohlc-modal{display:none;position:fixed;inset:0;background:#020617e6;backdrop-filter:blur(8px);z-index:2147483647;flex-direction:column;align-items:center;justify-content:flex-start;padding:14px;overflow:auto}
+  /* the import panel is no longer a full-screen overlay: it lives permanently at the top
+     of «محیط الگو» (the sidebar's first card) and reads as one more card in the page. */
+  #ohlc-modal{display:flex;position:static;width:100%;background:transparent;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;overflow:visible;margin:0 0 12px;z-index:auto}
   /* the window is two cards now — the picture and, under it, the table — and they share
      one width, one frame and one rhythm, so the page reads as a single column */
-  #ohlc-card,#ohlc-table-card{width:min(1080px,97vw);background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-sizing:border-box;box-shadow:0 25px 80px #000a;font-family:inherit}
+  #ohlc-card,#ohlc-table-card{width:100%;background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-sizing:border-box;box-shadow:0 12px 40px #000a;font-family:inherit}
+  /* the deck key that used to open the overlay is retired: the panel is always on the page */
+  #btn-import-image{display:none!important}
   #ohlc-table-card{margin-top:12px}
   #ohlc-card h2{margin:0;font-size:19px}
   /* the six keys sit in one row, exactly like #remote-control-deck: 36px tall, rounded,
@@ -61,7 +64,7 @@
   const T = {
     title: 'ورود تصویر',
     run: 'استخراج کندل‌ها',
-    confirm: 'تأیید و بازگشت به صفحهٔ برنامه',
+    confirm: 'تأیید و نمایش در محیط الگو',
     busy: 'در حال پردازش…'
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
@@ -112,13 +115,33 @@
     <div id="ohlc-status">هنوز تصویری انتخاب نشده.</div>
   </div>
   <div id="ohlc-table-card" class="ohlc-hidden"><div id="ohlc-table"></div></div>`;
-  document.body.appendChild(modal);
+  document.body.appendChild(modal);   /* anchored into the sidebar below */
+
+  /* the import panel is now a permanent part of the main page, sitting at the top of
+     «محیط الگو» (the sidebar's first card) instead of a separate overlay. React owns
+     that sidebar and may rebuild it, so a cheap watcher keeps the panel anchored at
+     the top of the environment whenever it (re)appears. The old deck key
+     (#btn-import-image) is retired and hidden. */
+  function mountPanel() {
+    const modalEl = document.getElementById('ohlc-modal');
+    const sidebar = document.getElementById('sidebar-controls');
+    if (!modalEl || !sidebar) return false;
+    if (modalEl.parentNode !== sidebar) sidebar.insertBefore(modalEl, sidebar.firstChild);
+    const key = document.getElementById('btn-import-image');
+    if (key) key.style.display = 'none';
+    return true;
+  }
+  (function bootPanel() {
+    const boot = setInterval(() => { mountPanel(); }, 400);
+    setTimeout(() => clearInterval(boot), 180000);
+  })();
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
   const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, write: null, ovData: null, shapedStage: null, shapedCard: null, shapedCompare: null, ovRaf: null, ovRafKey: null };
 
   /* ------------------------------------------------------------ open/close */
-  const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
+  /* the panel is always on the page; show() is kept as a no-op so nothing breaks. */
+  const show = (v) => { modal.style.display = 'flex'; };
 
   /* the sixth key: «تأیید» — always armed. With a measurement it hands the candles to
      the engine on the way out; with nothing in the window (no picture, no numbers) it
@@ -672,17 +695,14 @@
       keepOverlayRecord(overlayRecord()); /* the measured candles, kept for the card and the next load */
       mountOverlay();                     /* and the candle chart is drawn over «محیط الگو» right away */
       status('تأیید شد — ' + state.result.bars.length + ' کندل به موتور داده شد؛ ' +
-        'چارت کندلیِ همین اندازه‌گیری، هم‌قاب با همین پنجره، روی «محیط الگو» نشسته است. ' +
-        'پنجره بسته شد و به صفحهٔ برنامه برگشتید. با همان کلید «ورود تصویر چارت» می‌توانید ادامه دهید.');
+        'چارت کندلیِ همین اندازه‌گیری، هم‌قاب با همین تصویر، در «محیط الگو» زیر همین پنل نشسته است. ' +
+        'با همین پنل می‌توانید تصویر بعدی را وارد کنید.');
     } else {
-      status('چیزی برای تحویل نبود؛ پنجره خالی بسته شد و به صفحهٔ برنامه برگشتید.');
+      status('چیزی برای تحویل نبود؛ یک تصویر نمودار را بارگذاری و «استخراج کندل‌ها» را بزنید.');
     }
-    show(false);
     return has;
   }
   $('ohlc-confirm').addEventListener('click', confirmFlow);
-  modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') show(false); });
 
   /* ------------------------------------------------------------ image input */
   const drop = $('ohlc-drop');
@@ -896,11 +916,8 @@
     if (b.id === DECK_ID) return b;
     return DECK_TITLE.test((b.getAttribute('title') || '') + ' ' + (b.textContent || '')) ? b : null;
   }
-  document.addEventListener('click', (e) => {
-    if (!takeoverOn() || !isDeckKey(e.target)) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();   /* the storage dialog stays closed */
-    show(true);
-  }, true);
+  /* the deck key that used to open this overlay is retired — the panel is always on the
+     page now, so there is nothing to redirect and the key is hidden by CSS. */
   /* a picture handed to us from anywhere else (a paste, a seam call) is still measured */
   async function onPickedImage(url) {
     if (!url || typeof url !== 'string' || url.indexOf('data:image') !== 0) return;
