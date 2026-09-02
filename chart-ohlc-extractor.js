@@ -60,6 +60,10 @@
   .ohlc-table .ohlc-dir{text-align:center;white-space:nowrap;font-size:13px;line-height:1}
   .ohlc-up{color:#34d399}.ohlc-down{color:#f87171}.ohlc-nd{color:#475569}
   .ohlc-hidden{display:none!important}
+  /* candlestick inspection modal (#candle-chart-modal): on portrait phones the chart is
+     shown at about half the modal's height by default, and the canvas is pinch-zoomable */
+  @media(max-width:1023px){#candle-chart-viewport{max-height:40vh}}
+  #candle-chart-viewport canvas{touch-action:none;transform-origin:center;will-change:transform}
   `;
   const T = {
     title: 'ورود تصویر',
@@ -918,6 +922,46 @@
   }
   /* the deck key that used to open this overlay is retired — the panel is always on the
      page now, so there is nothing to redirect and the key is hidden by CSS. */
+
+  /* ------------------------------------- pinch-zoom on the candlestick inspection chart
+   * The «مشاهده» page (#candle-chart-modal) draws the matched candles on a canvas that
+   * fills its viewport. On a phone you zoom a chart with two fingers, so a pinch gesture
+   * scales that canvas (both axes) live via a CSS transform. The gesture is read at the
+   * document level so it works no matter when React mounts the modal; it only acts on the
+   * candle modal's canvas. transform-origin tracks the midpoint of the pinch, so the zoom
+   * is centred under your fingers. Scale is clamped and resets when the modal is reopened. */
+  (function setupCandlePinchZoom() {
+    const inViewport = (t) => t && t.tagName === 'CANVAS' && t.closest && t.closest('#candle-chart-viewport') != null;
+    let pinch = null;   /* { cvs, d0, cx, cy, s0 } */
+    document.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 2) { pinch = null; return; }
+      const cvs = inViewport(e.target) ? e.target : null;
+      if (!cvs) return;
+      const a = e.touches[0], b = e.touches[1];
+      pinch = {
+        cvs,
+        d0: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
+        cx: (a.clientX + b.clientX) / 2,
+        cy: (a.clientY + b.clientY) / 2,
+        s0: parseFloat(cvs.dataset.zoom || '1')
+      };
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const a = e.touches[0], b = e.touches[1];
+      const d = Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY));
+      let s = pinch.s0 * (d / pinch.d0);
+      s = Math.min(6, Math.max(0.5, s));          /* never squash it flat, never blow it up */
+      pinch.cvs.style.transformOrigin = pinch.cx + 'px ' + pinch.cy + 'px';
+      pinch.cvs.style.transform = 'scale(' + s + ')';
+      pinch.cvs.dataset.zoom = String(s);
+    }, { passive: false });
+    const end = () => { pinch = null; };
+    document.addEventListener('touchend', end);
+    document.addEventListener('touchcancel', end);
+  })();
+
   /* a picture handed to us from anywhere else (a paste, a seam call) is still measured */
   async function onPickedImage(url) {
     if (!url || typeof url !== 'string' || url.indexOf('data:image') !== 0) return;
