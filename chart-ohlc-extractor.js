@@ -115,7 +115,7 @@
   document.body.appendChild(modal);
 
   const $ = (id) => document.getElementById(id);   /* the open button lives outside the modal */
-  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, write: null, ovData: null, shapedStage: null, shapedCard: null };
+  const state = { img: null, result: null, templates: null, running: false, imgKey: null, confirmedKey: null, write: null, ovData: null, shapedStage: null, shapedCard: null, shapedCompare: null, ovRaf: null, ovRafKey: null };
 
   /* ------------------------------------------------------------ open/close */
   const show = (v) => { modal.style.display = v ? 'flex' : 'none'; };
@@ -420,6 +420,7 @@
   function removeOverlay() {
     const cv = document.getElementById(OV);
     if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
+    if (state.ovRaf) { try { cancelAnimationFrame(state.ovRaf); } catch (e) { } state.ovRaf = null; state.ovRafKey = null; }
     if (!ovOn()) unshapeStage();   /* the kill switch restores the card; a cleared chart keeps its shape */
     if (state.ovWatch) { try { clearInterval(state.ovWatch); } catch (e) { } state.ovWatch = null; }
   }
@@ -489,14 +490,43 @@
       state.shapedCard = null;
       did = true;
     }
+    if (unshapeCompare()) did = true;
     return did;
+  }
+  /* «اطلاعات الگوی کشف شده» (#comparative-chart-card) must carry the same shape as
+     «محیط الگو» — a wide strip, not a square. It is React-owned like the crop card, so
+     only its inline height is set to the frame's aspect at the card's width and restored
+     on the way out; the app's own canvas inside it already re-fits via its ResizeObserver. */
+  function shapeCompare(fr) {
+    if (!fr || !(fr.w > 40) || !(fr.h > 30)) return null;
+    const card = document.getElementById('comparative-chart-card');
+    if (!card) return null;
+    const w = Math.round(card.getBoundingClientRect().width);
+    if (!(w > 60)) return null;
+    const want = Math.round(Math.min(w, fr.w) * fr.h / fr.w);
+    if (want < 60) return null;      /* never crush the card into nothing */
+    if (!card.__dnaShapedC) card.__dnaShapedC = { height: card.style.height, minHeight: card.style.minHeight };
+    if (card.style.height !== want + 'px') { card.style.height = want + 'px'; card.style.minHeight = '0'; }
+    state.shapedCompare = card;
+    return want;
+  }
+  function unshapeCompare() {
+    const card = state.shapedCompare || document.getElementById('comparative-chart-card');
+    if (card && card.__dnaShapedC) {
+      card.style.height = card.__dnaShapedC.height;
+      card.style.minHeight = card.__dnaShapedC.minHeight;
+      delete card.__dnaShapedC;
+      state.shapedCompare = null;
+      return true;
+    }
+    return false;
   }
   function paintOverlay() {
     const cv = document.getElementById(OV);
     if (!cv) return false;
     if (!ovOn()) { removeOverlay(); return false; }
     const card = cropCard(), dat = state.ovData;
-    if (dat && dat.frame) shapeStage(dat.frame);        /* the card takes the window's shape first */
+    if (dat && dat.frame) { shapeStage(dat.frame); shapeCompare(dat.frame); }  /* all windows take the picture's shape first */
     /* the first box that really has a size on screen decides where the chart sits: a
        hidden canvas measures 0×0 and must not silence the chart (the v29 blank card —
        the crop canvas is display:none while no picture is loaded) */
@@ -578,11 +608,26 @@
       cv.style.cssText = 'position:fixed;pointer-events:none;z-index:45;box-sizing:border-box;display:none';
       (document.body || document.documentElement).appendChild(cv);
       const again = () => { try { paintOverlay(); } catch (e) { } };
+      /* scroll on the window and on every inner container (the pattern card lives inside
+         #sidebar-controls, an overflow-y-auto aside, so window scroll alone can miss it). */
       window.addEventListener('scroll', again, true);
+      document.addEventListener('scroll', again, true);
       window.addEventListener('resize', again);
       try { new ResizeObserver(again).observe(cropCard() || document.body); } catch (e) { }
-      /* the app re-renders that card; a bounded watch is enough and cannot fight it */
-      state.ovWatch = setInterval(again, 700);
+      /* Mobile is the real problem: during momentum / elastic scrolling a fixed canvas is
+         left in place because scroll events fire late or not at all. A cheap animation-frame
+         loop re-syncs the chart to the card on every frame — it only repaints when the card's
+         on-screen box has actually moved, so steady pages cost nothing. */
+      state.ovRaf = (function loop() {
+        state.ovRaf = requestAnimationFrame(loop);
+        const card = cropCard();
+        if (!card) return;
+        const r = card.getBoundingClientRect();
+        const key = Math.round(r.left) + 'x' + Math.round(r.top) + 'x' + Math.round(r.width) + 'x' + Math.round(r.height);
+        if (key !== state.ovRafKey) { state.ovRafKey = key; again(); }
+      })();
+      /* the app re-renders that card; a light watch is a backstop and cannot fight it */
+      state.ovWatch = setInterval(again, 300);
       setTimeout(() => { if (state.ovWatch) { clearInterval(state.ovWatch); state.ovWatch = null; } }, 60000);
     }
     return paintOverlay();
@@ -597,7 +642,9 @@
       try {
         if (!ovOn()) return false;
         const fr = storedFrame();
-        return fr ? shapeStage(fr) != null : false;
+        if (!fr) return false;
+        const a = shapeStage(fr), b = shapeCompare(fr);
+        return a != null || b != null;
       } catch (e) { return false; }
     };
     if (!storedFrame()) return;
