@@ -409,13 +409,16 @@
       return fr && fr.w > 40 && fr.h > 30 ? fr : null;
     } catch (e) { return null; }
   }
-  (function loadStoredOverlay() {
+  (function cleanStartOverlay() {
+    /* Every open of the app starts a fresh «محیط الگو»: the last session's candle
+       chart and reshaped windows are dropped, so the environment looks exactly as on a
+       first launch. The chart a user confirms in this session is drawn live and lives
+       only in memory — it is never carried over to the next page load. */
+    state.ovData = null;
     try {
-      const raw = localStorage.getItem(OV_STORE);
-      if (!raw) return;
-      const rec = JSON.parse(raw);
-      if (rec && Array.isArray(rec.candles) && rec.candles.length) state.ovData = rec;
-    } catch (e) { /* unreadable: start clean */ }
+      localStorage.removeItem(OV_STORE);
+      localStorage.removeItem(OV_FRAME);
+    } catch (e) { /* storage unavailable: the session still starts clean */ }
   })();
   function removeOverlay() {
     const cv = document.getElementById(OV);
@@ -632,45 +635,27 @@
     }
     return paintOverlay();
   }
-  /* the card takes the «ورود تصویر» shape from the moment the app opens — with or
-     without a chart on it. The frame survives in chartdna_px_frame, so even a cleared
-     chart or a fresh load starts with the window-shaped card; a light guard re-applies
-     it whenever React rebuilds the card. localStorage.chartdna_trend_overlay='0' stops
-     it and puts everything back. */
-  (function shapeCardFromBoot() {
-    const apply = () => {
-      try {
-        if (!ovOn()) return false;
-        const fr = storedFrame();
-        if (!fr) return false;
-        const a = shapeStage(fr), b = shapeCompare(fr);
-        return a != null || b != null;
-      } catch (e) { return false; }
-    };
-    if (!storedFrame()) return;
-    const boot = setInterval(() => {
-      if (!ovOn()) { clearInterval(boot); return; }
-      if (apply()) {
-        clearInterval(boot);
-        try { new ResizeObserver(apply).observe(document.body); } catch (e) { }
-        setInterval(apply, 1200);   /* cheap: early-exits when the shape already holds */
-      }
-    }, 150);
-    setTimeout(() => clearInterval(boot), 60000);
-  })();
-  /* a chart confirmed before this load: back on the card as soon as React has built it —
-     a fast boot keeps the big-then-small flash of the card as short as it can be */
-  (function remountStoredOverlay() {
-    if (!state.ovData) return;
-    const boot = setInterval(() => { if (mountOverlay()) clearInterval(boot); }, 150);
-    setTimeout(() => clearInterval(boot), 30000);
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => mountOverlay());
-  })();
   function setOverlay(v) {
     try { localStorage.setItem(OV_OFF, v ? '1' : '0'); } catch (e) { }
     if (v) mountOverlay(); else removeOverlay();
     return !!document.getElementById(OV);
   }
+  /* the app's «سطل آشغال» key (#btn-clear-all, «پاکسازی محیط») resets its own React
+     state; this runs alongside it and fully wipes our side too: it removes the candle
+     overlay, clears the stored overlay/frame and returns every reshaped window to its
+     normal size — the environment looks as if the app was just launched. */
+  function fullReset() {
+    removeOverlay();            /* drops the canvas and stops the rAF / scroll watchers */
+    keepOverlayRecord(null);    /* state.ovData = null and the stored overlay is removed */
+    try { localStorage.removeItem(OV_FRAME); } catch (e) { }
+    state.ovData = null;
+    unshapeStage();             /* the environment + comparative cards go back to normal */
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target && e.target.closest && e.target.closest('#btn-clear-all');
+    if (!b) return;
+    fullReset();
+  }, true);
 
   function confirmFlow() {
     const has = !!(state.result && state.result.bars && state.result.bars.length);
