@@ -776,3 +776,27 @@ Request: «یک ردیف ۶ کلیدی در بالای پنجرهٔ ورود ت�
 - Revert: drop the `v44` blocks from `chart-ohlc-extractor.js` (STYLE + `faDigit`/
   `fnKeyHtml` helpers + the `#ohlc-fn-bar` markup + the `row-0` class) and restore
   `?v=43` / the sw version.
+
+## v45 — live TradingView price in «ورود تصویر», on key ۱ (tv-live)
+
+Request: نمایش زندهٔ قیمت تریدینگ‌ویو در پنجرهٔ «ورود تصویر» با انتخاب نماد/تایم‌فریم و
+کلیهٔ قابلیت‌های خود TV؛ کلید ۱ از ردیف شماره‌دار (v44) به این قابلیت اختصاص داده شد.
+
+- Section `#ohlc-tv` sits in the window right under the two key rows, above the
+  picture stage. Toggled by `#ohlc-fn-1` (title «قیمت زنده — کلید ۱»), persistent in
+  localStorage `chartdna_tv_open` (`'0'` = closed at boot; default open).
+- Chart: TradingView **Advanced Chart** widget (`s3.tradingview.com/tv.js`, no API
+  key) with the full TradingView toolbox — symbol search, timeframes, indicators,
+  drawing tools, save-image. No extra quick chips (by request). Defaults:
+  `OANDA:XAUUSD`, interval 60 (H1), dark theme, timezone Asia/Tehran, locale en
+  (fa not offered by TV; the rest of the page stays Persian). Widget created lazily
+  on first open; script error → warning in `#ohlc-status`, never blocks the panel.
+- Two sizes (request «both_sizes»): inline in the window (stage 300px) and a
+  fullscreen mode — `#ohlc-tv-expand` adds `.full` to the *same* section
+  (`position:fixed` CSS, no iframe moves), Esc or the button returns to the frame.
+- Key ۱ shows an `.on` ring while the live price is open.
+- The capturable own-data view (screenshot → OHLC engine, Binance source) is
+  **deferred** by request; the numbered keys ۲–۶ are still unassigned.
+- Cache: `index.html`/`sw.js` → `?v=45` / `chartdna-v2.45.0-tv-live-price`.
+- Revert: drop the v45 CSS/HTML/JS blocks from `chart-ohlc-extractor.js` and
+  restore `?v=44` / the sw version.

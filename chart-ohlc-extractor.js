@@ -56,6 +56,21 @@
   #ohlc-fn-bar .ohlc-dk[aria-disabled=true]{opacity:.55;cursor:default}
   /* keep the original row's bottom margin intact: the numbered row above has its own */
   #ohlc-card > div > .row-0{margin-bottom:2px}
+  /* v45 — live TradingView price, opened by key ۱ of the numbered row
+     (default open, collapsible; inline in the window + fullscreen mode) */
+  #ohlc-tv{display:none;margin:10px 0 2px;background:#0e1826f0;border:1px solid #26354e;border-radius:14px;padding:8px;box-sizing:border-box}
+  #ohlc-tv.open{display:block}
+  #ohlc-tv-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  #ohlc-tv-title{font-size:12px;font-weight:700;color:#cbd5e1;flex:1;display:flex;align-items:center;gap:6px}
+  #ohlc-tv-title .dot{width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981}
+  #ohlc-tv-head button{box-sizing:border-box;min-width:30px;height:26px;padding:0 8px;background:#111d2e;color:#94a3b8;border:1px solid #334155;border-radius:7px;cursor:pointer;font:inherit;font-size:12px;line-height:1;transition:all .15s ease}
+  #ohlc-tv-head button:hover{border-color:#38bdf8;color:#e0f2fe;background:#0c2038}
+  #ohlc-tv-stage{position:relative;height:300px;border:1px solid #1e293b;border-radius:10px;overflow:hidden;background:#0b1220}
+  #ohlc-tv-chart{position:absolute;inset:0}
+  #ohlc-tv.full{position:fixed;inset:10px;z-index:300;margin:0;display:flex;flex-direction:column;box-shadow:0 20px 70px #000c}
+  #ohlc-tv.full #ohlc-tv-stage{flex:1 1 auto;height:auto;min-height:0}
+  #ohlc-fn-1.on{border-color:#10b981;color:#a7f3d0;background:#0f2a20;box-shadow:0 0 0 1px #10b98166}
+  @media(max-width:430px){#ohlc-tv-stage{height:230px}}
   .ohlc-dk:hover{border-color:#10b981;color:#a7f3d0;background:#0f2a20}
   .ohlc-dk:active{transform:scale(.95)}
   .ohlc-dk:disabled{opacity:.45;cursor:not-allowed}
@@ -148,6 +163,17 @@
         ${keyHtml('data-view="ann" type="button" aria-selected="false"', ICO.cross, 'تصویر با مارک‌ها')}
         ${keyHtml('id="ohlc-confirm" type="button"', ICO.check, T.confirm)}
       </div>
+      <!-- v45 — live TradingView price (کلید ۱). The TradingView Advanced Chart widget
+           carries the full feature set: symbol search, timeframes, indicators, drawing
+           tools — nothing of ours is added on top of it (no quick chips by request). -->
+      <section id="ohlc-tv" dir="rtl" aria-label="قیمت زنده تریدینگ ویو">
+        <div id="ohlc-tv-head">
+          <span id="ohlc-tv-title"><span class="dot"></span>قیمت زنده · TradingView</span>
+          <button id="ohlc-tv-expand" type="button" title="بزرگ‌نمایی تمام‌صفحه" aria-label="بزرگ‌نمایی تمام‌صفحه">⛶</button>
+          <button id="ohlc-tv-close" type="button" title="بستن قیمت زنده (کلید ۱)" aria-label="بستن قیمت زنده">✕</button>
+        </div>
+        <div id="ohlc-tv-stage"><div id="ohlc-tv-chart"></div></div>
+      </section>
       <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
       <canvas id="ohlc-chart"></canvas>
       <canvas id="ohlc-orig" class="ohlc-hidden"></canvas>
@@ -1005,6 +1031,112 @@
     await new Promise((done) => loadImage(url, done));
     await run(sigOf(url));
     show(true);
+  }
+
+  /* =====================================================================
+   * v45 — live TradingView price inside «ورود تصویر», opened by key ۱
+   * ---------------------------------------------------------------------
+   * The Advanced Chart widget (s3.tradingview.com/tv.js, no key, free with
+   * the TradingView attribution) brings symbol search, timeframes,
+   * indicators and drawing tools — everything TradingView has. State:
+   *   .open on #ohlc-tv    -> live section visible (toggled by کلید ۱)
+   *   .full on #ohlc-tv    -> whole section becomes a fixed fullscreen
+   *                           overlay (same DOM node, no iframe moves)
+   * Persisted in localStorage 'chartdna_tv_open' ('0' closes at boot).
+   * The widget is created lazily, only once, and only when it is visible.
+   * ===================================================================== */
+  const TV_KEY = 'chartdna_tv_open';
+  const TV_CFG = { symbol: 'OANDA:XAUUSD', interval: '60' };
+  let tvMade = false, tvTried = false;
+  const tvSection = $('ohlc-tv'), tvChartEl = $('ohlc-tv-chart'),
+        tvExpand = $('ohlc-tv-expand'), tvClose = $('ohlc-tv-close'),
+        tvFnKey = $('ohlc-fn-1');
+  const tvIsOpen = () => { try { return localStorage.getItem(TV_KEY) !== '0'; } catch (e) { return true; } };
+  const tvKick = () => { try { window.dispatchEvent(new Event('resize')); } catch (e) { } };
+  function tvCreate() {
+    if (tvMade || !window.TradingView) return false;
+    /* a widget that was created and then re-created by TradingView's own code
+       leaves an iframe in the container; if it is missing (or was emptied by a
+       re-render) the widget is rebuilt on the next open */
+    if (tvChartEl.querySelector('iframe')) { tvMade = true; return true; }
+    try {
+      new TradingView.widget({
+        container_id: 'ohlc-tv-chart',
+        autosize: true,
+        symbol: TV_CFG.symbol, interval: TV_CFG.interval,
+        timezone: 'Asia/Tehran', theme: 'dark', style: '1', locale: 'en',
+        toolbar_bg: '#0e1826', backgroundColor: '#0b1220',
+        enable_publishing: false, allow_symbol_change: true,
+        hide_top_toolbar: false, hide_side_toolbar: false,
+        withdateranges: true, save_image: true,
+        details: false, hotlist: false, calendar: false, studies: [],
+        show_popup_button: true, popup_width: 1100, popup_height: 700
+      });
+      tvMade = true;
+      return true;
+    } catch (err) {
+      status('خطا در ساخت چارت زنده: ' + ((err && err.message) || err), 'err');
+      return false;
+    }
+  }
+  function tvEnsure() {
+    if (tvMade) return;
+    if (window.TradingView) { tvCreate(); return; }
+    if (tvTried) return;                       /* one attempt; error already shown */
+    tvTried = true;
+    const prevStatus = $('ohlc-status') ? $('ohlc-status').textContent : '';
+    status('در حال بارگذاری چارت زندهٔ تریدینگ ویو…');
+    const s = document.createElement('script');
+    s.src = 'https://s3.tradingview.com/tv.js';
+    s.async = true;
+    s.onload = () => {
+      if (tvCreate()) {
+        /* success: restore whatever the panel said before loading (or a short note) */
+        try {
+          const el = $('ohlc-status');
+          if (el && (el.textContent || '').indexOf('در حال بارگذاری چارت زنده') === 0) {
+            el.textContent = prevStatus || 'چارت زنده آماده است.';
+          }
+        } catch (e) { }
+      } else {
+        status('ساخت چارت زنده ناموفق بود — صفحه را دوباره باز کنید.', 'warn');
+      }
+    };
+    s.onerror = () => {
+      status('بارگذاری چارت زنده ناموفق بود — اتصال اینترنت را بررسی کنید.', 'err');
+    };
+    document.head.appendChild(s);
+  }
+  function tvSetOpen(open) {
+    try { localStorage.setItem(TV_KEY, open ? '1' : '0'); } catch (e) { }
+    tvSection.classList.toggle('open', !!open);
+    if (tvFnKey) tvFnKey.classList.toggle('on', !!open);
+    if (open) {
+      tvEnsure();
+      setTimeout(tvKick, 120);   /* the iframe was display:none -> let it relayout */
+      setTimeout(tvKick, 700);
+    }
+    return !!open;
+  }
+  if (tvSection && tvFnKey) {
+    tvFnKey.title = 'قیمت زنده — کلید ۱ (باز/بسته)';
+    tvFnKey.setAttribute('aria-label', 'قیمت زنده — کلید ۱ (باز/بسته)');
+    tvFnKey.addEventListener('click', () => tvSetOpen(!tvSection.classList.contains('open')));
+    tvClose.addEventListener('click', () => { tvSetOpen(false); if (tvSection.classList.contains('full')) tvSection.classList.remove('full'); });
+    tvExpand.addEventListener('click', () => {
+      const full = tvSection.classList.toggle('full');
+      tvExpand.textContent = full ? '🗗' : '⛶';
+      tvExpand.title = full ? 'بازگشت به اندازهٔ قاب پنجره' : 'بزرگ‌نمایی تمام‌صفحه';
+      setTimeout(tvKick, 60); setTimeout(tvKick, 400);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && tvSection.classList.contains('full')) {
+        tvSection.classList.remove('full');
+        tvExpand.textContent = '⛶';
+        setTimeout(tvKick, 60);
+      }
+    });
+    if (tvIsOpen()) { tvSection.classList.add('open'); tvFnKey.classList.add('on'); tvEnsure(); }
   }
 
   window.ChartDnaOhlc = {
