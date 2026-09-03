@@ -1,10 +1,10 @@
 /* Chart DNA — Service Worker */
-const VERSION = "chartdna-v2.45.0-tv-live-price";
+const VERSION = "chartdna-v2.46.0-tv-zoom-out";
 const CACHE_NAME = `${VERSION}`;
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "chart-ohlc-extractor.js?v=45",
+  "chart-ohlc-extractor.js?v=46",
   "chart-ohlc-engine.js?v=43",
   "chart-dna-ui-trim.js?v=43",
   "chart-dna-methods.js?v=43",

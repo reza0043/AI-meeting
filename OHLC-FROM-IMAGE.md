@@ -800,3 +800,20 @@ Request: نمایش زندهٔ قیمت تریدینگ‌ویو در پنجره�
 - Cache: `index.html`/`sw.js` → `?v=45` / `chartdna-v2.45.0-tv-live-price`.
 - Revert: drop the v45 CSS/HTML/JS blocks from `chart-ohlc-extractor.js` and
   restore `?v=44` / the sw version.
+
+### v46 — the TradingView picture zoomed out («watching TV»)
+
+Request: «تصویر تریدینگ‌ویو داخل پنجره را زوم‌اوت کن که کوچک‌تر شود، انگار کاربر در
+این پنجره تلویزیون نگاه می‌کند.»
+
+- The widget is created with `range:'12M'` (long visible range → candles read small).
+  Override any time: `localStorage.chartdna_tv_range` (e.g. '6M', 'ALL').
+- Whole picture scale: the TV frame now draws at `scale(0.78)` inside the dark stage —
+  the picture is smaller with a dark bezel around it, exactly like a TV seen from the
+  sofa. Persisted `chartdna_tv_scale` (0.5–1). New head keys: **−** (دورتر) and **+**
+  (نزدیک‌تر). Fullscreen (`#ohlc-tv.full`) always lifts the transform to full size and
+  hides the ± keys; leaving fullscreen restores the saved scale.
+- Verified live: transform applied at boot, −/＋ change 0.68/0.78, fullscreen computed
+  `transform:none`, right-edge candle pixels 960 → 87 (content moved inward).
+- Revert: drop the v46 scale blocks/keys from `chart-ohlc-extractor.js`, restore
+  `?v=45` and the sw version.

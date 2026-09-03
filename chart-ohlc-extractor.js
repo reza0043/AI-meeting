@@ -66,7 +66,12 @@
   #ohlc-tv-head button{box-sizing:border-box;min-width:30px;height:26px;padding:0 8px;background:#111d2e;color:#94a3b8;border:1px solid #334155;border-radius:7px;cursor:pointer;font:inherit;font-size:12px;line-height:1;transition:all .15s ease}
   #ohlc-tv-head button:hover{border-color:#38bdf8;color:#e0f2fe;background:#0c2038}
   #ohlc-tv-stage{position:relative;height:300px;border:1px solid #1e293b;border-radius:10px;overflow:hidden;background:#0b1220}
-  #ohlc-tv-chart{position:absolute;inset:0}
+  #ohlc-tv-chart{position:absolute;inset:0;transform-origin:center center;transition:transform .2s ease}
+  /* v46 — «دوربین از فاصله»: the whole TV picture is scaled down inside the dark
+     frame (like watching TV from a distance). Fullscreen mode always shows it at
+     full size (buttons hidden there, transform lifted). */
+  #ohlc-tv.full #ohlc-tv-chart{transform:none!important}
+  #ohlc-tv.full #ohlc-tv-zout,#ohlc-tv.full #ohlc-tv-zin{display:none}
   #ohlc-tv.full{position:fixed;inset:10px;z-index:300;margin:0;display:flex;flex-direction:column;box-shadow:0 20px 70px #000c}
   #ohlc-tv.full #ohlc-tv-stage{flex:1 1 auto;height:auto;min-height:0}
   #ohlc-fn-1.on{border-color:#10b981;color:#a7f3d0;background:#0f2a20;box-shadow:0 0 0 1px #10b98166}
@@ -169,6 +174,8 @@
       <section id="ohlc-tv" dir="rtl" aria-label="قیمت زنده تریدینگ ویو">
         <div id="ohlc-tv-head">
           <span id="ohlc-tv-title"><span class="dot"></span>قیمت زنده · TradingView</span>
+          <button id="ohlc-tv-zout" type="button" title="کوچک‌کردن تصویر (دورتر)" aria-label="کوچک‌کردن تصویر">−</button>
+          <button id="ohlc-tv-zin" type="button" title="بزرگ‌کردن تصویر (نزدیک‌تر)" aria-label="بزرگ‌کردن تصویر">+</button>
           <button id="ohlc-tv-expand" type="button" title="بزرگ‌نمایی تمام‌صفحه" aria-label="بزرگ‌نمایی تمام‌صفحه">⛶</button>
           <button id="ohlc-tv-close" type="button" title="بستن قیمت زنده (کلید ۱)" aria-label="بستن قیمت زنده">✕</button>
         </div>
@@ -1046,10 +1053,42 @@
    * The widget is created lazily, only once, and only when it is visible.
    * ===================================================================== */
   const TV_KEY = 'chartdna_tv_open';
-  const TV_CFG = { symbol: 'OANDA:XAUUSD', interval: '60' };
+  /* v46 — the chart opens zoomed-out: a long visible range makes the candles small,
+     so the window reads like watching the market on a TV from a distance. Range
+     presets of TradingView: '1D' '5D' '1M' '3M' '6M' '12M' '60M' 'ALL'. Override the
+     default any time: localStorage chartdna_tv_range = '6M' (or 'ALL' = the whole
+     history the symbol offers at that timeframe). */
+  const TV_CFG = {
+    symbol: 'OANDA:XAUUSD',
+    interval: '60',
+    range: (function () {
+      try { var r = localStorage.getItem('chartdna_tv_range'); if (r) return r; } catch (e) { }
+      return '12M';
+    })()
+  };
+  /* v46 — «عکس از فاصله»: the whole TradingView picture is drawn smaller inside the
+     dark stage (a TV seen from the sofa). Scale 1 = fills the frame; less = farther.
+     Default 0.78; ± keys in the head adjust it; persisted 'chartdna_tv_scale'.
+     Fullscreen ignores the scale (CSS lifts the transform there). */
+  const TV_SCALE_KEY = 'chartdna_tv_scale';
+  const tvScaleDefault = () => {
+    try {
+      var v = parseFloat(localStorage.getItem(TV_SCALE_KEY));
+      if (isFinite(v)) return Math.min(1, Math.max(0.5, v));
+    } catch (e) { }
+    return 0.78;
+  };
+  let tvScale = tvScaleDefault();
+  const tvApplyScale = (s) => {
+    tvScale = Math.min(1, Math.max(0.5, s));
+    try { localStorage.setItem(TV_SCALE_KEY, String(tvScale)); } catch (e) { }
+    if (tvChartEl) tvChartEl.style.transform = tvScale >= 1 ? '' : 'scale(' + tvScale + ')';
+    return tvScale;
+  };
   let tvMade = false, tvTried = false;
   const tvSection = $('ohlc-tv'), tvChartEl = $('ohlc-tv-chart'),
         tvExpand = $('ohlc-tv-expand'), tvClose = $('ohlc-tv-close'),
+        tvZin = $('ohlc-tv-zin'), tvZout = $('ohlc-tv-zout'),
         tvFnKey = $('ohlc-fn-1');
   const tvIsOpen = () => { try { return localStorage.getItem(TV_KEY) !== '0'; } catch (e) { return true; } };
   const tvKick = () => { try { window.dispatchEvent(new Event('resize')); } catch (e) { } };
@@ -1063,7 +1102,7 @@
       new TradingView.widget({
         container_id: 'ohlc-tv-chart',
         autosize: true,
-        symbol: TV_CFG.symbol, interval: TV_CFG.interval,
+        symbol: TV_CFG.symbol, interval: TV_CFG.interval, range: TV_CFG.range,
         timezone: 'Asia/Tehran', theme: 'dark', style: '1', locale: 'en',
         toolbar_bg: '#0e1826', backgroundColor: '#0b1220',
         enable_publishing: false, allow_symbol_change: true,
@@ -1123,20 +1162,24 @@
     tvFnKey.setAttribute('aria-label', 'قیمت زنده — کلید ۱ (باز/بسته)');
     tvFnKey.addEventListener('click', () => tvSetOpen(!tvSection.classList.contains('open')));
     tvClose.addEventListener('click', () => { tvSetOpen(false); if (tvSection.classList.contains('full')) tvSection.classList.remove('full'); });
+    if (tvZin) tvZin.addEventListener('click', () => tvApplyScale(tvScale + 0.1));
+    if (tvZout) tvZout.addEventListener('click', () => tvApplyScale(tvScale - 0.1));
     tvExpand.addEventListener('click', () => {
       const full = tvSection.classList.toggle('full');
       tvExpand.textContent = full ? '🗗' : '⛶';
       tvExpand.title = full ? 'بازگشت به اندازهٔ قاب پنجره' : 'بزرگ‌نمایی تمام‌صفحه';
+      if (!full) tvApplyScale(tvScale);   /* back in the frame: restore the TV distance */
       setTimeout(tvKick, 60); setTimeout(tvKick, 400);
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && tvSection.classList.contains('full')) {
         tvSection.classList.remove('full');
         tvExpand.textContent = '⛶';
+        tvApplyScale(tvScale);
         setTimeout(tvKick, 60);
       }
     });
-    if (tvIsOpen()) { tvSection.classList.add('open'); tvFnKey.classList.add('on'); tvEnsure(); }
+    if (tvIsOpen()) { tvSection.classList.add('open'); tvFnKey.classList.add('on'); tvApplyScale(tvScale); tvEnsure(); }
   }
 
   window.ChartDnaOhlc = {
