@@ -1,10 +1,10 @@
 /* Chart DNA — Service Worker */
-const VERSION = "chartdna-v2.49.0-tv-camera-snapshot";
+const VERSION = "chartdna-v2.48.0-fn-duty-icons";
 const CACHE_NAME = `${VERSION}`;
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "chart-ohlc-extractor.js?v=49",
+  "chart-ohlc-extractor.js?v=48",
   "chart-ohlc-engine.js?v=43",
   "chart-dna-ui-trim.js?v=43",
   "chart-dna-methods.js?v=43",

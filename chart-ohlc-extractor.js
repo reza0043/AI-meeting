@@ -76,18 +76,6 @@
   #ohlc-tv.full{position:fixed;inset:10px;z-index:300;margin:0;display:flex;flex-direction:column;box-shadow:0 20px 70px #000c}
   #ohlc-tv.full #ohlc-tv-stage{flex:1 1 auto;height:auto;min-height:0}
   #ohlc-fn-1.on{border-color:#10b981;color:#a7f3d0;background:#0f2a20;box-shadow:0 0 0 1px #10b98166}
-  /* v49 — کلید ۳ «آمادهٔ دریافت عکس دوربین TV»: armed state */
-  #ohlc-fn-3.on{border-color:#38bdf8;color:#bae6fd;background:#0c2038;box-shadow:0 0 0 1px #38bdf866}
-  /* v49 — the camera-drop dropzone: a slim band at the bottom edge of the live stage
-     (never over the chart itself: the TV iframe is cross-origin, so a file dropped on
-     the chart area can never reach us — the band is ours and always catches the drop,
-     and while armed a file may be dropped anywhere on the page as well) */
-  #ohlc-shotdrop{position:absolute;left:8px;right:8px;bottom:8px;height:34px;z-index:6;display:none;align-items:center;justify-content:center;
-                 border:1.5px dashed #38bdf8;border-radius:9px;background:rgba(8,20,35,.85);
-                 color:#bae6fd;font-size:12px;font-weight:700;text-align:center;cursor:pointer}
-  #ohlc-shotdrop.show{display:flex}
-  #ohlc-shotdrop:hover,#ohlc-shotdrop.over{border-color:#10b981;color:#a7f3d0;background:rgba(10,30,25,.9)}
-  #ohlc-tv.full #ohlc-shotdrop{bottom:10px;left:10px;right:10px}
   @media(max-width:430px){#ohlc-tv-stage{height:230px}}
   .ohlc-dk:hover{border-color:#10b981;color:#a7f3d0;background:#0f2a20}
   .ohlc-dk:active{transform:scale(.95)}
@@ -151,10 +139,7 @@
        v0.475.0 set as the row below (verified against the installed package): کلید ۱ =
        live price (tv), کلید ۲ = display-model cycle (palette). */
     tv: LUCIDE('tv', '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>'),
-    palette: LUCIDE('palette', '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>'),
-    /* v49 — duty icon for کلید ۳: camera (glyph copied from the same lucide-react
-       v0.475.0 set) — duty: drop the TradingView camera snapshot on the window. */
-    camera: LUCIDE('camera', '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>')
+    palette: LUCIDE('palette', '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>')
   };
   const keyHtml = (attr, ico, text) => '<button class="ohlc-dk ' + DECK_KEY + '" ' + attr +
     ' title="' + text + '" aria-label="' + text + '">' + ico + '</button>';
@@ -178,7 +163,7 @@
       <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors" id="ohlc-fn-bar">
         ${fnKeyHtml(1, ICO.tv)}
         ${fnKeyHtml(2, ICO.palette)}
-        ${fnKeyHtml(3, ICO.camera)}
+        ${fnKeyHtml(3)}
         ${fnKeyHtml(4)}
         ${fnKeyHtml(5)}
         ${fnKeyHtml(6)}
@@ -203,11 +188,7 @@
           <button id="ohlc-tv-expand" type="button" title="بزرگ‌نمایی تمام‌صفحه" aria-label="بزرگ‌نمایی تمام‌صفحه">⛶</button>
           <button id="ohlc-tv-close" type="button" title="بستن قیمت زنده (کلید ۱)" aria-label="بستن قیمت زنده">✕</button>
         </div>
-        <div id="ohlc-tv-stage">
-          <div id="ohlc-tv-chart"></div>
-          <!-- v49 — drop zone of the TradingView camera snapshot (کلید ۳) -->
-          <div id="ohlc-shotdrop" title="عکس دوربین TV را اینجا بیندازید">عکس دوربین TradingView را اینجا رها کنید</div>
-        </div>
+        <div id="ohlc-tv-stage"><div id="ohlc-tv-chart"></div></div>
       </section>
       <input id="ohlc-file" type="file" accept="image/*" class="ohlc-hidden">
       <canvas id="ohlc-chart"></canvas>
@@ -809,19 +790,19 @@
   /* ------------------------------------------------------------ image input */
   const drop = $('ohlc-drop');
   drop.addEventListener('click', () => $('ohlc-file').click());
-  $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) tvDeliverPick(e.target.files[0]); });
+  $('ohlc-file').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
   ['dragover', 'dragenter'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('ohlc-over'); }));
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('ohlc-over')));
   drop.addEventListener('drop', (e) => {
     e.preventDefault();
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) { if (tvIsArmed()) tvDropShot(f); else loadFile(f); }
+    if (f) loadFile(f);
     else if (e.dataTransfer.getData('text/html')) grabHtmlImage(e.dataTransfer.getData('text/html'));
   });
   document.addEventListener('paste', (e) => {
     const it = e.clipboardData && e.clipboardData.items;
     if (!it) return;
-    for (let i = 0; i < it.length; i++) if (it[i].type.indexOf('image') === 0) { tvDeliverPick(it[i].getAsFile()); show(true); break; }
+    for (let i = 0; i < it.length; i++) if (it[i].type.indexOf('image') === 0) { loadFile(it[i].getAsFile()); show(true); break; }
   });
   function loadFile(file) {
     if (!file || !/^image\//.test(file.type || 'image')) { status('فایل انتخاب‌شده تصویر نیست.', 'err'); return; }
@@ -1204,7 +1185,6 @@
     try { localStorage.setItem(TV_KEY, open ? '1' : '0'); } catch (e) { }
     tvSection.classList.toggle('open', !!open);
     if (tvFnKey) tvFnKey.classList.toggle('on', !!open);
-    if (!open && tvFn3 && tvFn3.classList.contains('on')) tvArmShot(false);  /* closing also disarms کلید ۳ */
     if (open) {
       tvEnsure();
       setTimeout(tvKick, 120);   /* the iframe was display:none -> let it relayout */
@@ -1212,154 +1192,19 @@
     }
     return !!open;
   }
-  /* =====================================================================
-   * v49 — کلید ۳: receive the TradingView camera snapshot
-   * ---------------------------------------------------------------------
-   * A page can never screenshot the cross-origin TradingView iframe itself,
-   * so the flow is: the user takes the picture with the widget's OWN camera
-   * («take a snapshot» — it exists in the «نمای کامل» model only) and the
-   * saved PNG comes back to this panel. کلید ۳ arms the reception:
-   *   · the live section opens (if closed), switches to «نمای کامل» (the
-   *     only model whose toolbar has the camera) and goes fullscreen — a
-   *     big widget makes the camera PNG big, and the pixel engine needs
-   *     readable price-axis digits;
-   *   · a slim drop band appears at the bottom edge of the live stage; the
-   *     whole page also accepts the drop while armed (the TV iframe itself
-   *     is cross-origin, so the band + page are the drop targets);
-   *   · the band click opens the file picker (mobile: no drag & drop);
-   *   · a paste of an image while armed is received the same way.
-   * The snapshot lands in the «ورود تصویر» picture frame exactly like a
-   * manual upload and extraction is NOT auto-run (by request: «استخراج
-   * کندل‌ها» stays manual). Everything the arming changed is restored when
-   * the shot lands or when کلید ۳ is tapped again / the live view is closed.
-   * ===================================================================== */
-  const tvShot = $('ohlc-shotdrop');
-  const TV_FN3_TITLE = 'کلید ۳ — دریافت عکس دوربین TradingView (دوربین TV را بزنید، PNG آن را اینجا بیندازید)';
-  const TV_SHOT_HINT = 'عکس PNG دوربین TradingView را روی نوار رها کنید یا کلیک و انتخاب کنید';
-  let tvShotPrep = null;   /* {wasOpen, wasFull, wasModeIdx, fulled, modeSwitched} while armed */
-  const tvIsArmed = () => !!(tvFn3 && tvFn3.classList.contains('on'));
-  function tvFull(on) {    /* shared fullscreen switch (expand button / Escape / کلید ۳) */
-    tvSection.classList.toggle('full', !!on);
-    if (tvExpand) {
-      tvExpand.textContent = on ? '🗗' : '⛶';
-      tvExpand.title = on ? 'بازگشت به اندازهٔ قاب پنجره' : 'بزرگ‌نمایی تمام‌صفحه';
-    }
-    if (!on) tvApplyScale(tvScale);
-    setTimeout(tvKick, 60); setTimeout(tvKick, 400);
-    return !!on;
-  }
-  function tvShotRestore() {
-    const p = tvShotPrep;
-    tvShotPrep = null;
-    if (!p) return;
-    if (p.fulled && tvSection.classList.contains('full')) tvFull(false);
-    if (p.modeSwitched && tvModeCur !== p.wasModeIdx) tvSetMode(p.wasModeIdx, { announce: false });
-    if (!p.wasOpen) {           /* the arming opened the live view: put it back */
-      try { localStorage.setItem(TV_KEY, '0'); } catch (e) { }
-      tvSection.classList.remove('open');
-      if (tvFnKey) tvFnKey.classList.remove('on');
-    }
-  }
-  function tvArmShot(arm) {
-    if (!tvFn3) return;
-    if (arm) {
-      tvShotPrep = {
-        wasOpen: tvSection.classList.contains('open'),
-        wasFull: tvSection.classList.contains('full'),
-        wasModeIdx: tvModeCur,
-        fulled: false, modeSwitched: false
-      };
-      tvFn3.classList.add('on');
-      tvFn3.title = 'کلید ۳ — آمادهٔ دریافت؛ دوربین TV را بزنید و PNG را رها کنید (لغو: دوباره کلیک)';
-      /* the camera lives in «نمای کامل» only — switch first, then open/big */
-      if (tvMode().id !== 'full') {
-        tvSetMode(TV_MODES.findIndex((m) => m.id === 'full'), { announce: false });
-        tvShotPrep.modeSwitched = true;
-      }
-      tvSetOpen(true);
-      tvFull(true);                                  /* big widget -> big camera PNG */
-      tvShotPrep.fulled = true;
-      if (tvShot) {
-        tvShot.textContent = TV_SHOT_HINT;
-        tvShot.classList.add('show');
-      }
-      status('کلید ۳ — عکس را با دوربینِ خودِ TradingView بگیرید (نمای کامل، بالای راستِ چارت)، PNG دانلودشده را روی صفحه رها کنید یا روی نوار پایین کلیک کنید. لغو: دوباره کلید ۳.');
-    } else {
-      tvFn3.classList.remove('on');
-      tvFn3.title = TV_FN3_TITLE;
-      if (tvShot) tvShot.classList.remove('show');
-      tvShotRestore();
-      try {
-        const el = $('ohlc-status');
-        if (el && el.textContent.indexOf('کلید ۳') === 0) el.textContent = '';
-      } catch (e) { }
-    }
-  }
-  function tvDropShot(file) {
-    if (!file || !/^image\//.test(file.type || '')) {
-      status('فایل انتخابی تصویر نیست — عکس PNG خروجی دوربین TradingView را بیندازید.', 'err');
-      return false;
-    }
-    const url = URL.createObjectURL(file);
-    loadImage(url, () => {
-      show(true);
-      try { URL.revokeObjectURL(url); } catch (e) { }
-      tvArmShot(false);
-      status('عکس از دوربین TradingView دریافت شد — حالا می‌توانید «استخراج کندل‌ها» را بزنید.');
-    });
-    return true;
-  }
-  const tvFn3 = $('ohlc-fn-3');
-  if (tvFn3 && tvShot && tvSection) {
-    tvFn3.title = TV_FN3_TITLE;
-    tvFn3.setAttribute('aria-label', TV_FN3_TITLE);
-    tvFn3.addEventListener('click', () => { if (tvIsArmed()) tvArmShot(false); else tvArmShot(true); });
-    tvShot.addEventListener('click', () => { const f = $('ohlc-file'); if (f) f.click(); });
-    /* drop on the band */
-    ['dragover', 'dragenter'].forEach((t) => tvShot.addEventListener(t, (e) => {
-      e.preventDefault(); e.stopPropagation(); tvShot.classList.add('over');
-    }));
-    ['dragleave', 'drop'].forEach((t) => tvShot.addEventListener(t, (e) => {
-      e.preventDefault(); e.stopPropagation(); tvShot.classList.remove('over');
-    }));
-    tvShot.addEventListener('drop', (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) tvDropShot(f);
-      else status('عکسی یافت نشد — فایل PNG دوربین TV را بکشید.', 'warn');
-    });
-    /* while armed the whole page receives the drop (the band + everything else) */
-    document.addEventListener('dragover', (e) => { if (tvIsArmed()) e.preventDefault(); });
-    document.addEventListener('drop', (e) => {
-      if (!tvIsArmed()) return;
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) { e.preventDefault(); tvDropShot(f); }
-    });
-  }
-  /* the armed file picker and the armed paste are received exactly like the drop */
-  function tvDeliverPick(file) {
-    if (file && tvIsArmed()) tvDropShot(file);
-    else if (file) loadFile(file);
-  }
-
   /* v47 — کلید ۲: cycle the live-view display models (light candles -> light line ->
      full TradingView -> …). The widget iframe is rebuilt with the model's options. */
-  function tvSetMode(idx, opts) {
-    const o = opts || {};
-    idx = ((idx % TV_MODES.length) + TV_MODES.length) % TV_MODES.length;
-    if (tvModeCur === idx && !o.force) return tvMode();
+  function tvCycleMode() {
+    if (tvSection && !tvSection.classList.contains('open')) tvSetOpen(true);
+    tvModeCur = (tvModeCur + 1) % TV_MODES.length;
+    try { localStorage.setItem(TV_MODE_KEY, TV_MODES[tvModeCur].id); } catch (e) { }
     const old = tvChartEl && tvChartEl.querySelector('iframe');
     if (old) old.remove();               /* rebuild for the new model */
-    tvModeCur = idx;
-    try { localStorage.setItem(TV_MODE_KEY, TV_MODES[tvModeCur].id); } catch (e) { }
     tvModeUI();
-    if (o.announce) status('سبک نمایش چارت زنده: ' + tvMode().fa + ' · ' + (tvModeCur + 1) + ' از ' + TV_MODES.length);
+    status('سبک نمایش چارت زنده: ' + tvMode().fa + ' · ' + (tvModeCur + 1) + ' از ' + TV_MODES.length);
     tvEnsure();
     setTimeout(tvKick, 150); setTimeout(tvKick, 700);
     return tvMode();
-  }
-  function tvCycleMode() {
-    if (tvSection && !tvSection.classList.contains('open')) tvSetOpen(true);
-    return tvSetMode(tvModeCur + 1, { announce: true });
   }
   if (tvSection && tvFnKey) {
     tvFnKey.title = 'قیمت زنده — کلید ۱ (باز/بسته)';
@@ -1369,15 +1214,23 @@
       tvModeUI();
       tvFn2.addEventListener('click', tvCycleMode);
     }
-    tvClose.addEventListener('click', () => {
-      if (tvSection.classList.contains('full')) tvFull(false);
-      tvSetOpen(false);
-    });
+    tvClose.addEventListener('click', () => { tvSetOpen(false); if (tvSection.classList.contains('full')) tvSection.classList.remove('full'); });
     if (tvZin) tvZin.addEventListener('click', () => tvApplyScale(tvScale + 0.1));
     if (tvZout) tvZout.addEventListener('click', () => tvApplyScale(tvScale - 0.1));
-    tvExpand.addEventListener('click', () => tvFull(!tvSection.classList.contains('full')));
+    tvExpand.addEventListener('click', () => {
+      const full = tvSection.classList.toggle('full');
+      tvExpand.textContent = full ? '🗗' : '⛶';
+      tvExpand.title = full ? 'بازگشت به اندازهٔ قاب پنجره' : 'بزرگ‌نمایی تمام‌صفحه';
+      if (!full) tvApplyScale(tvScale);   /* back in the frame: restore the TV distance */
+      setTimeout(tvKick, 60); setTimeout(tvKick, 400);
+    });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && tvSection.classList.contains('full')) tvFull(false);
+      if (e.key === 'Escape' && tvSection.classList.contains('full')) {
+        tvSection.classList.remove('full');
+        tvExpand.textContent = '⛶';
+        tvApplyScale(tvScale);
+        setTimeout(tvKick, 60);
+      }
     });
     if (tvIsOpen()) { tvSection.classList.add('open'); tvFnKey.classList.add('on'); tvApplyScale(tvScale); tvEnsure(); }
   }
