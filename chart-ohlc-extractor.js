@@ -776,6 +776,24 @@
     if (v) mountOverlay(); else removeOverlay();
     return !!document.getElementById(OV);
   }
+  /* v55 — arm the app's own play key the moment a searchable pattern exists, without
+     waiting for chart-dna-methods' poll. Directly reads the overlay record (no cache)
+     and enables the original button the way armPlay does, then mirrors to کلید ۴. */
+  function pxPlayArmNow() {
+    const o = $('btn-start-analysis'), k = $('ohlc-fn-4');
+    if (!o || !k) return;
+    let has = false;
+    try {
+      const raw = localStorage.getItem(OV_STORE);
+      if (raw) { const rec = JSON.parse(raw); has = !!(rec && rec.candles && rec.candles.length >= 6); }
+    } catch (e) { }
+    const st = $('btn-stop-analysis');
+    const analyzing = !!(st && !st.disabled);
+    if (has && !analyzing && o.disabled) {
+      o.disabled = false; o.style.opacity = '1'; o.style.cursor = 'pointer';
+    }
+    k.setAttribute('aria-disabled', String(!!o.disabled));
+  }
   /* v52 — «سطل آشغال» also wipes the «ورود تصویر» window itself: the loaded
      picture, the measured result, the tables and every temporary record this window
      wrote are dropped, so the whole page looks exactly like a fresh launch. */
@@ -968,8 +986,7 @@
           await writeExtracted();
           keepOverlayRecord(overlayRecord());
           state.autoHanded = true;                    /* «تأیید» afterwards won't hand over twice */
-          const d = $('ohlc-fn-4');
-          if (d) d.setAttribute('aria-disabled', 'false');
+          pxPlayArmNow();                             /* enable the play key at once */
         }
       } catch (e) { console.warn('[ohlc] auto arm failed:', e); }
       if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms) +
@@ -1334,6 +1351,7 @@
       var k = $(it.fn), o = $(it.orig);
       if (!k) return;
       if (!o) { k.setAttribute('aria-disabled', 'true'); return; }
+      if (it.orig === 'btn-start-analysis') pxPlayArmNow();  /* keep play armed while a query exists */
       var dis = !!o.disabled;
       var cur = k.getAttribute('aria-disabled');
       if (cur !== String(dis)) k.setAttribute('aria-disabled', String(dis));
