@@ -1324,6 +1324,22 @@
       if (dis) t += ' (فعلاً غیرفعال)';
       if (k.title !== t) { k.title = t; k.setAttribute('aria-label', t); }
     }
+    /* v53 — run the app's own handler DIRECTLY instead of forwarding a click event.
+       Probed live: with this companion script on the page, React no longer dispatches
+       (delegated) click events to these deck buttons (the DOM node still carries its
+       __reactProps$…onClick, and calling that function runs the whole engine-1 flow
+       with its progress bar — verified: hook fires, «پیشرفت اسکن» reaches 100).
+       So the fn key invokes the very handler React bound to the original button —
+       the same code path, same gating checks inside, nothing reimplemented. */
+    function fire(o) {
+      if (!o) return false;
+      var pk = null;
+      try { for (var k in o) if (k.indexOf('__reactProps') === 0) { pk = k; break; } } catch (e) { }
+      if (pk && o[pk] && typeof o[pk].onClick === 'function') {
+        try { o[pk].onClick({}); return true; } catch (e) { console.warn('[ohlc] handler error:', e); }
+      }
+      try { o.click(); return true; } catch (e) { return false; }   /* fallback: plain click */
+    }
     items.forEach(function (it) {
       var k = $(it.fn);
       if (!k) return;
@@ -1332,7 +1348,8 @@
       k.addEventListener('click', function () {
         var o = $(it.orig);
         if (!o || o.disabled) return;      /* same rule as the original key */
-        o.click();                          /* the app's own handler runs */
+        fire(o);                            /* the app's own handler runs (direct) */
+        if (it.orig === 'btn-clear-all') fullReset();   /* our side of the wipe runs too */
         syncOne(it);
       });
     });

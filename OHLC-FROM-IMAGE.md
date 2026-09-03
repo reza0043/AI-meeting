@@ -931,3 +931,29 @@ Request: کلید پلی باید موتور ۱ را با دادهٔ به‌دس
   boot state (img null, ovStore false, pxRecs 0, table/views hidden) with no errors.
 - Cache: `?v=52` / `chartdna-v2.52.0-engine1-handoff-trash`.
 - Revert: remove the v52 barPrice fallback + resetInputPanel changes, restore `?v=51`.
+
+### v53 — play actually runs engine 1 (direct handler invocation) — v52 follow-up fix
+
+Report: «کلید پلی اجرا نشد. نوار پیشرفت اسکن هم هیچ حرکتی نمیکند. در قبل این کلید
+وظیفهاش انجام میشد… وظایف را به خوبی جایگزین نکردی.»
+
+- Root cause (bisected live on the deployed page): with this companion script on the
+  page, React no longer dispatches (delegated) click events to the deck's buttons —
+  the click bubbles to the React root but the bound `onClick` never runs (real mouse
+  click AND programmatic `.click()` both dead; the settings/header buttons still
+  work; with the extractor blocked entirely the same play click runs fine). The deck
+  button still carries its live `__reactProps$…onClick` (React's own `xt` handler) —
+  calling that function directly runs the WHOLE engine-1 flow: verified live, the
+  analysis hook fires 3× and «پیشرفت اسکن» reaches 100 with results rendered.
+- Fix: fn keys ۴/۵/۶ now invoke the very React handler bound to the original button
+  directly (`__reactProps$…onClick`, found fresh at click time, with `.click()` as a
+  fallback) instead of forwarding a click event. Same code path and gating as the
+  original key — nothing reimplemented. fn ۶ additionally runs our own `fullReset()`
+  (its document click-hook no longer fires since no real click is dispatched).
+- Verified live (served the v53 file over the deployed page): after confirm, fn ۴
+  click → stop enabled, progress s:12→100, «شباهت» results rendered, hook 3; fn ۵
+  mid-run → analyzing stops (stop disabled, start re-enabled); fn ۶ after loading a
+  second image → window back to fresh (image null, overlay false, «هنوز تصویری
+  انتخاب نشده.», progress 0). No page errors.
+- Cache: `?v=53` / `chartdna-v2.53.0-play-direct-handler`.
+- Revert: restore the click-forwarding in `wireDeckDuties` and `?v=52`.

@@ -1,10 +1,10 @@
 /* Chart DNA — Service Worker */
-const VERSION = "chartdna-v2.52.0-engine1-handoff-trash";
+const VERSION = "chartdna-v2.53.0-play-direct-handler";
 const CACHE_NAME = `${VERSION}`;
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "chart-ohlc-extractor.js?v=52",
+  "chart-ohlc-extractor.js?v=53",
   "chart-ohlc-engine.js?v=43",
   "chart-dna-ui-trim.js?v=43",
   "chart-dna-methods.js?v=43",
