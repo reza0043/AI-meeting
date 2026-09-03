@@ -63,6 +63,7 @@
   #ohlc-tv-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
   #ohlc-tv-title{font-size:12px;font-weight:700;color:#cbd5e1;flex:1;display:flex;align-items:center;gap:6px}
   #ohlc-tv-title .dot{width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981}
+  #ohlc-tv-mode{font-size:10.5px;font-weight:700;color:#7dd3fc;background:#0c2038;border:1px solid #334155;border-radius:999px;padding:2px 9px;white-space:nowrap;line-height:1.7}
   #ohlc-tv-head button{box-sizing:border-box;min-width:30px;height:26px;padding:0 8px;background:#111d2e;color:#94a3b8;border:1px solid #334155;border-radius:7px;cursor:pointer;font:inherit;font-size:12px;line-height:1;transition:all .15s ease}
   #ohlc-tv-head button:hover{border-color:#38bdf8;color:#e0f2fe;background:#0c2038}
   #ohlc-tv-stage{position:relative;height:300px;border:1px solid #1e293b;border-radius:10px;overflow:hidden;background:#0b1220}
@@ -174,6 +175,7 @@
       <section id="ohlc-tv" dir="rtl" aria-label="قیمت زنده تریدینگ ویو">
         <div id="ohlc-tv-head">
           <span id="ohlc-tv-title"><span class="dot"></span>قیمت زنده · TradingView</span>
+          <span id="ohlc-tv-mode" title="سبک نمایش فعلی — کلید ۲ آن را عوض می‌کند"></span>
           <button id="ohlc-tv-zout" type="button" title="کوچک‌کردن تصویر (دورتر)" aria-label="کوچک‌کردن تصویر">−</button>
           <button id="ohlc-tv-zin" type="button" title="بزرگ‌کردن تصویر (نزدیک‌تر)" aria-label="بزرگ‌کردن تصویر">+</button>
           <button id="ohlc-tv-expand" type="button" title="بزرگ‌نمایی تمام‌صفحه" aria-label="بزرگ‌نمایی تمام‌صفحه">⛶</button>
@@ -1085,33 +1087,59 @@
     if (tvChartEl) tvChartEl.style.transform = tvScale >= 1 ? '' : 'scale(' + tvScale + ')';
     return tvScale;
   };
-  let tvMade = false, tvTried = false;
+  let tvTried = false;
   const tvSection = $('ohlc-tv'), tvChartEl = $('ohlc-tv-chart'),
         tvExpand = $('ohlc-tv-expand'), tvClose = $('ohlc-tv-close'),
         tvZin = $('ohlc-tv-zin'), tvZout = $('ohlc-tv-zout'),
-        tvFnKey = $('ohlc-fn-1');
+        tvFnKey = $('ohlc-fn-1'), tvFn2 = $('ohlc-fn-2'), tvModeEl = $('ohlc-tv-mode');
+  /* v47 — several display models for the live view, cycled by کلید ۲.
+     TradingView widget style codes probed live: 1 = candles, 4 = thin line/bars.
+     The light models hide every toolbar (watch-only, no clutter); the full model
+     restores the whole TradingView toolbox. Persisted 'chartdna_tv_mode'. */
+  const TV_MODE_KEY = 'chartdna_tv_mode';
+  const TV_MODES = [
+    { id: 'candle-lite', fa: 'کندل ساده', tip: 'چارت کندلی تمیز بدون نوار ابزار', style: '1', lite: 1 },
+    { id: 'line-lite', fa: 'خط سبک', tip: 'نمای خطیِ سبک و مینیمال', style: '4', lite: 1 },
+    { id: 'full', fa: 'نمای کامل TV', tip: 'تمام نوار ابزار و امکانات تریدینگ ویو', style: '1', lite: 0 }
+  ];
+  let tvModeCur = (function () {
+    try {
+      var s = localStorage.getItem(TV_MODE_KEY);
+      if (s) for (var i = 0; i < TV_MODES.length; i++) if (TV_MODES[i].id === s) return i;
+    } catch (e) { }
+    return 0;   /* default: the lightest watch model */
+  })();
+  const tvMode = () => TV_MODES[tvModeCur] || TV_MODES[0];
+  const tvModeUI = () => {
+    const m = tvMode();
+    if (tvModeEl) tvModeEl.textContent = m.fa;
+    if (tvFn2) {
+      tvFn2.title = 'کلید ۲ — تغییر سبک نمایش (فعلی: ' + m.fa + ' · ' + (tvModeCur + 1) + ' از ' + TV_MODES.length + ')';
+      tvFn2.setAttribute('aria-label', tvFn2.title);
+    }
+  };
   const tvIsOpen = () => { try { return localStorage.getItem(TV_KEY) !== '0'; } catch (e) { return true; } };
   const tvKick = () => { try { window.dispatchEvent(new Event('resize')); } catch (e) { } };
   function tvCreate() {
-    if (tvMade || !window.TradingView) return false;
-    /* a widget that was created and then re-created by TradingView's own code
-       leaves an iframe in the container; if it is missing (or was emptied by a
-       re-render) the widget is rebuilt on the next open */
-    if (tvChartEl.querySelector('iframe')) { tvMade = true; return true; }
+    if (!window.TradingView) return false;
+    /* the chart of the current mode: an existing iframe means it is already up */
+    if (tvChartEl.querySelector('iframe')) return true;
+    const m = tvMode();
     try {
       new TradingView.widget({
         container_id: 'ohlc-tv-chart',
         autosize: true,
         symbol: TV_CFG.symbol, interval: TV_CFG.interval, range: TV_CFG.range,
-        timezone: 'Asia/Tehran', theme: 'dark', style: '1', locale: 'en',
+        timezone: 'Asia/Tehran', theme: 'dark', locale: 'en',
+        style: m.style,
         toolbar_bg: '#0e1826', backgroundColor: '#0b1220',
-        enable_publishing: false, allow_symbol_change: true,
-        hide_top_toolbar: false, hide_side_toolbar: false,
-        withdateranges: true, save_image: true,
+        enable_publishing: false,
+        allow_symbol_change: !m.lite,
+        hide_top_toolbar: !!m.lite, hide_side_toolbar: !!m.lite,
+        withdateranges: !m.lite, save_image: !m.lite,
         details: false, hotlist: false, calendar: false, studies: [],
-        show_popup_button: true, popup_width: 1100, popup_height: 700
+        show_popup_button: !m.lite, popup_width: 1100, popup_height: 700
       });
-      tvMade = true;
       return true;
     } catch (err) {
       status('خطا در ساخت چارت زنده: ' + ((err && err.message) || err), 'err');
@@ -1119,7 +1147,7 @@
     }
   }
   function tvEnsure() {
-    if (tvMade) return;
+    if (tvChartEl && tvChartEl.querySelector('iframe')) return;
     if (window.TradingView) { tvCreate(); return; }
     if (tvTried) return;                       /* one attempt; error already shown */
     tvTried = true;
@@ -1157,10 +1185,28 @@
     }
     return !!open;
   }
+  /* v47 — کلید ۲: cycle the live-view display models (light candles -> light line ->
+     full TradingView -> …). The widget iframe is rebuilt with the model's options. */
+  function tvCycleMode() {
+    if (tvSection && !tvSection.classList.contains('open')) tvSetOpen(true);
+    tvModeCur = (tvModeCur + 1) % TV_MODES.length;
+    try { localStorage.setItem(TV_MODE_KEY, TV_MODES[tvModeCur].id); } catch (e) { }
+    const old = tvChartEl && tvChartEl.querySelector('iframe');
+    if (old) old.remove();               /* rebuild for the new model */
+    tvModeUI();
+    status('سبک نمایش چارت زنده: ' + tvMode().fa + ' · ' + (tvModeCur + 1) + ' از ' + TV_MODES.length);
+    tvEnsure();
+    setTimeout(tvKick, 150); setTimeout(tvKick, 700);
+    return tvMode();
+  }
   if (tvSection && tvFnKey) {
     tvFnKey.title = 'قیمت زنده — کلید ۱ (باز/بسته)';
     tvFnKey.setAttribute('aria-label', 'قیمت زنده — کلید ۱ (باز/بسته)');
     tvFnKey.addEventListener('click', () => tvSetOpen(!tvSection.classList.contains('open')));
+    if (tvFn2) {
+      tvModeUI();
+      tvFn2.addEventListener('click', tvCycleMode);
+    }
     tvClose.addEventListener('click', () => { tvSetOpen(false); if (tvSection.classList.contains('full')) tvSection.classList.remove('full'); });
     if (tvZin) tvZin.addEventListener('click', () => tvApplyScale(tvScale + 0.1));
     if (tvZout) tvZout.addEventListener('click', () => tvApplyScale(tvScale - 0.1));

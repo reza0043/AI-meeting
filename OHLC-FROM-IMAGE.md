@@ -817,3 +817,20 @@ Request: «تصویر تریدینگ‌ویو داخل پنجره را زوم‌
   `transform:none`, right-edge candle pixels 960 → 87 (content moved inward).
 - Revert: drop the v46 scale blocks/keys from `chart-ohlc-extractor.js`, restore
   `?v=45` and the sw version.
+
+### v47 — display models for the live TradingView view, cycled by کلید ۲
+
+Request: چند مدلِ نمایشِ سبک‌تر برای چارت زنده (نمای فعلی شلوغ است) + چرخش با دکمهٔ ۲.
+
+- Three display models (widget style codes verified live: 1 = candles, 4 = thin line):
+  1. **«کندل ساده»** (default) — clean candles, top/side toolbars hidden (watch-only)
+  2. **«خط سبک»** — thin line chart, toolbars hidden
+  3. **«نمای کامل TV»** — full TradingView toolbox (symbol search, timeframes, indicators…)
+- کلید ۲ (`#ohlc-fn-2`) cycles candle-lite → line-lite → full → …; each press rebuilds the
+  widget iframe for the chosen model (scale/TV-distance and fullscreen still apply).
+- Current model is shown in a pill in the live-view header and in the کلید ۲ tooltip;
+  a one-line status confirms each switch («سبک نمایش چارت زنده: … · 2 از 3»).
+- Persisted `localStorage.chartdna_tv_mode` (id). Cycle order is the array order, so a
+  stored index always resolves. Default = the lightest model.
+- Cache: `?v=47` / `chartdna-v2.47.0-tv-modes-cycle`.
+- Revert: drop the v47 mode blocks from `chart-ohlc-extractor.js`, restore `?v=46`.
