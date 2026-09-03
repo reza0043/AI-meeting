@@ -979,3 +979,26 @@ Follow-up to v53: play still reported dead («هیچ کدام انجام نشد�
   clients.claim + network-first navigations, so an old cached client updates on its
   next ordinary reload).
 - Revert: drop the auto-arm block in run() + pxPlayArmNow and restore `?v=53`.
+
+### v56 — key numbers ۱–۱۲ on the keys; «محیط الگو» window removed
+
+Request: روی هر ۱۲ کلید دو ردیف بالای پنجرهٔ «ورود تصویر» یک شمارهٔ ۱ تا ۱۲ در گوشهٔ
+بالا-چپ با فونت ریز (لوگوها سر جایشان) تا کلیدها با شماره معرفی شوند؛ و پنجرهٔ
+«محیط الگو» کاملاً با تمام اتصالاتش از کل برنامه حذف شود.
+
+- Every key of the two rows now carries a tiny badge (`span.dk-num`, Persian digit,
+  ~7.5px, top-left corner, pointer-events none) over the untouched centred icon:
+  row #1 (the numbered row) = ۱..۶ (tv / palette / digit-3 placeholder / play /
+  square / trash-2), row #0 (the window's own row) = ۷..۱۲ (image pick / extract /
+  three views / confirm). Verified live: 12 badges in DOM order ۱..۱۲, each inside
+  its own key's top-left corner; RTL reading order (right→left) matches ۱..۱۲.
+- The «محیط الگو» window is the app's `#image-cropper-card` (heading «محیط الگو»);
+  it is now hidden with all its connections: nothing is drawn over it any more
+  (`mountOverlay` no-ops when the card is gone — guard added, canvas removed),
+  the «تأیید» flow no longer claims a chart «در محیط الگو» (message + key label
+  now say the pattern is ready for engine-1 search via کلید ۴), and the top-of-file
+  comments were rewritten accordingly. The panel is the sidebar's first card,
+  flowing straight into scan progress/results.
+- Cache: `?v=56` / `chartdna-v2.56.0-key-badges-no-env`.
+- Revert: drop the badge markup/CSS + the `#image-cropper-card` hide rule and
+  restore the overlay-drawing guards/texts, back to `?v=55`.
