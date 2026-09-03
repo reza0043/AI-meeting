@@ -1065,14 +1065,18 @@
   /* v46 — the chart opens zoomed-out: a long visible range makes the candles small,
      so the window reads like watching the market on a TV from a distance. Range
      presets of TradingView: '1D' '5D' '1M' '3M' '6M' '12M' '60M' 'ALL'. Override the
-     default any time: localStorage chartdna_tv_range = '6M' (or 'ALL' = the whole
-     history the symbol offers at that timeframe). */
+     default any time: localStorage chartdna_tv_range.
+     v50 — default timeframe is 1 hour (interval '60'), and TradingView re-picks the
+     interval to fit the requested range (probed live: 12M→daily, 6M→2h, 3M→1h,
+     1M→30m, no range→1h), so the default range is '3M': the only wide preset that
+     keeps the 1-hour default. A manual chartdna_tv_range override is the user's own
+     choice and may change the timeframe again. */
   const TV_CFG = {
     symbol: 'OANDA:XAUUSD',
     interval: '60',
     range: (function () {
       try { var r = localStorage.getItem('chartdna_tv_range'); if (r) return r; } catch (e) { }
-      return '12M';
+      return '3M';
     })()
   };
   /* v46 — «عکس از فاصله»: the whole TradingView picture is drawn smaller inside the

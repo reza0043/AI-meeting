@@ -850,3 +850,24 @@ Request: «به کلید شماره ۱ و ۲ آیکونی که نشان‌دهن
 - Cache: `?v=48` / `chartdna-v2.48.0-fn-duty-icons`.
 - Revert: drop the ICO `tv`/`palette` entries, pass digits again in the fn row markup,
   restore `?v=47`.
+
+### v50 — default timeframe of the live TradingView window is 1 hour
+
+Request: «پنجره تریدینگ وید الان به صورت پیش فرض بر روی تایم فرم یک روزه است؛ پیش فرض
+تایم فرم رو بر روی ۱ ساعته بذار.»
+
+- Root cause: the widget was already built with `interval:'60'`, but TradingView
+  re-picks the interval to fit the requested `range` — probed live on fresh
+  browsers: `range '12M' → 1 day`, `'6M' → 2 hours`, `'3M' → 1 hour`, `'1M' → 30m`,
+  no range → 1 hour. The v46 default `range:'12M'` was what forced the daily chart.
+- Fix: default `range` is now `'3M'` (the widest preset that keeps the 1-hour
+  interval) while `interval:'60'` is unchanged — verified in the widget's own
+  full-model toolbar: the active timeframe radio is «1 hour».
+- The zoomed-out look is preserved: 3 months of hourly candles still fill the
+  pane with small candles. A manual override stays possible as before via
+  `localStorage.chartdna_tv_range` (and, being the user's own choice, may switch
+  the timeframe again — documented in the code comment).
+- Cache: `?v=50` / `chartdna-v2.50.0-tv-default-1h` (v49 numbering was consumed
+  by the reverted camera-snapshot build).
+- Revert: set the default `range` back to `'12M'` and restore `?v=48` / the sw
+  version `chartdna-v2.48.0-fn-duty-icons`.
