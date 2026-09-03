@@ -957,3 +957,25 @@ Report: «کلید پلی اجرا نشد. نوار پیشرفت اسکن هم �
   انتخاب نشده.», progress 0). No page errors.
 - Cache: `?v=53` / `chartdna-v2.53.0-play-direct-handler`.
 - Revert: restore the click-forwarding in `wireDeckDuties` and `?v=52`.
+
+### v54/v55 — play arms instantly after extraction; clear disabled-state feedback
+
+Follow-up to v53: play still reported dead («هیچ کدام انجام نشده»).
+
+- v54: a successful extraction now hands the measured candles to engine-1's query
+  spot IMMEDIATELY (no «تأیید» step needed) — writeExtracted + overlay record run
+  at the end of `run()` when bars are ok, so fn ۴ un-disables right away, exactly
+  like the app's own extract→pattern→search flow. «تأیید» afterwards no longer
+  double-hands (autoHanded flag). Clicking fn ۴ while disabled shows an explanatory
+  status instead of silence.
+- v55: instant arming without poll delay — `pxPlayArmNow()` reads the overlay record
+  directly, enables the app's own play button the way armPlay does, and the fn-۴
+  mirror (syncOne) never lags behind. Fixes the ~1-2 s race seen on the live site
+  where the key stayed dim right after extraction.
+- Live-verified on the deployed v55: 600 ms after «استخراج کندل‌ها» (no confirm)
+  fn ۴ is armed; clicking it runs engine-1 — scan progress s:0→100, «شباهت» results
+  rendered, analysis hook fires; stop/trash behave as in v53.
+- Cache: `?v=55` / `chartdna-v2.55.0-play-arm-instant` (sw.js keeps skipWaiting +
+  clients.claim + network-first navigations, so an old cached client updates on its
+  next ordinary reload).
+- Revert: drop the auto-arm block in run() + pxPlayArmNow and restore `?v=53`.
