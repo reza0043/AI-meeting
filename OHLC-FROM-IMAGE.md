@@ -755,3 +755,24 @@ The play button (`#btn-start-analysis`) used to depend on the removed Engine-2 s
 - Kill switch: `localStorage.chartdna_pxplay='0'` → `__pxQuery` returns null, P23/P24
   fall back to original behaviour, button untouched.
 - Revert: `git revert <v37 commit>`.
+
+## v44 — a numbered six-key row above the «ورود تصویر» window's own key row
+
+Request: «یک ردیف ۶ کلیدی در بالای پنجرهٔ ورود تصویر، دقیقاً هم‌سایز ردیفِ
+شش‌کلیدیِ فعلی، فعلاً با اعداد نام‌گذاری شود تا بعداً به هر کلید وظیفه‌ای داده شود.»
+
+- The row lives at the top of «ورود تصویر» (`#ohlc-card`), directly above the window's
+  own six-key row (`#ohlc-bar`), in `chart-ohlc-extractor.js`.
+- Geometry is a copy of the existing row: same classes (`ohlc-bar … p-1.5 … gap-1`),
+  36 px keys, 4 px gap, 6 px padding → the same 360×50 box (keys 54×36 at desktop
+  sidebar width, measured live). Distinct `#ohlc-fn-bar` id + subtle darker background
+  (`#101b2d`) so the placeholder band reads as a separate strip.
+- Keys: `#ohlc-fn-1` … `#ohlc-fn-6`, `type=button`, face = the Persian digit ۱…۶
+  (`span.fn-num`), title/aria = «کلید ۱» … «کلید ۶». Inert on purpose: no click handler,
+  no state, no effect — wiring only. Assignments later only need
+  `document.getElementById('ohlc-fn-N').addEventListener('click', …)`.
+- Original row untouched (`#ohlc-bar` now also carries `row-0` purely as a CSS hook).
+- Cache: `index.html`/`sw.js` bumped to `?v=44` / `chartdna-v2.44.0-fn-keys-row`.
+- Revert: drop the `v44` blocks from `chart-ohlc-extractor.js` (STYLE + `faDigit`/
+  `fnKeyHtml` helpers + the `#ohlc-fn-bar` markup + the `row-0` class) and restore
+  `?v=43` / the sw version.

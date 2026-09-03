@@ -17,6 +17,13 @@
  * Everything happens in the browser: no image and no number leaves the page.
  */
 (() => {
+  /* v44: a second six-key row (numbered 1-6, same size/format as the row below) sits
+     above the window's own key row, waiting for the assignments the owner will give
+     each key later. The row is inert: the keys exist for wiring only, and carry their
+     number on the face (a larger digit replaces the icon, since there is no glyph to
+     show yet). Titles: «کلید ۱» … «کلید ۶» (persian labels so they read at a glance).
+     Assignments later only need to attach listeners to #ohlc-fn-1 … #ohlc-fn-6. */
+  const FUN_BAR = 1; /* row #1 (numbered), the original six-key row is #0 */
   const STYLE = `
   /* the import panel is no longer a full-screen overlay: it lives permanently at the top
      of «محیط الگو» (the sidebar's first card) and reads as one more card in the page. */
@@ -32,9 +39,23 @@
      equal widths, icon only; the values below are the same numbers the app's utilities give
      (flex-1 / h-9 / rounded-lg / gap-1 / p-1.5), so the row looks the same with or without them */
   #ohlc-bar{margin:10px 0 2px;background:#0e1826f0;border-color:#1e293b;gap:4px;padding:6px}
+  #ohlc-bar.row-0{margin:10px 0 2px}
+  /* v44 — the numbered row above the window's own row: identical geometry (same
+     classes, 36px keys, 4px gap, 6px padding -> same 360x50 box as the row below).
+     It is visually a sibling card: slightly distinct background (#101b2d) and a muted
+     border-top accent so it reads as a separate band for future tools. */
+  #ohlc-fn-bar{box-sizing:border-box;background:#101b2df5;border-color:#26354e;gap:4px;padding:6px;margin:0 0 6px}
   .ohlc-dk{box-sizing:border-box;flex:1 1 0;min-width:0;min-height:36px;border:1px solid #334155;border-radius:8px;
            background:#111d2ecc;color:#cbd5e1;cursor:pointer;display:flex;align-items:center;justify-content:center;
            transition:all .15s ease;font:inherit}
+  /* numbered keys: the digit is the face for now; same hover/active language as the
+     icon keys below, so the two rows behave alike */
+  .ohlc-dk.fn-key{font-size:16px;font-weight:700;line-height:1;letter-spacing:0;background:#101a2b}
+  .ohlc-dk.fn-key:hover{border-color:#38bdf8;color:#bae6fd;background:#0c2038}
+  .ohlc-dk.fn-key .fn-num{pointer-events:none}
+  #ohlc-fn-bar .ohlc-dk[aria-disabled=true]{opacity:.55;cursor:default}
+  /* keep the original row's bottom margin intact: the numbered row above has its own */
+  #ohlc-card > div > .row-0{margin-bottom:2px}
   .ohlc-dk:hover{border-color:#10b981;color:#a7f3d0;background:#0f2a20}
   .ohlc-dk:active{transform:scale(.95)}
   .ohlc-dk:disabled{opacity:.45;cursor:not-allowed}
@@ -96,6 +117,13 @@
   };
   const keyHtml = (attr, ico, text) => '<button class="ohlc-dk ' + DECK_KEY + '" ' + attr +
     ' title="' + text + '" aria-label="' + text + '">' + ico + '</button>';
+  /* v44 — digits 1-6 in Persian (۱۲۳۴۵۶) for the numbered placeholder row */
+  const faDigit = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+  /* v44 — the numbered key of the new top row: one digit on the face (span.fn-num),
+     the title «کلید n» ready for the later assignment */
+  const fnKeyHtml = (n) => '<button id="ohlc-fn-' + n + '" type="button" class="ohlc-dk fn-key ' + DECK_KEY +
+    '" data-fn="' + n + '" title="کلید ' + faDigit(n) + '" aria-label="کلید ' + faDigit(n) + '">' +
+    '<span class="fn-num">' + faDigit(n) + '</span></button>';
 
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
@@ -103,7 +131,16 @@
   <div id="ohlc-card" dir="rtl">
     <h2>${T.title}</h2>
     <div style="margin-top:12px">
-      <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors" id="ohlc-bar">
+      <!-- v44 — the numbered six-key row: placeholder band above the window's own row -->
+      <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors" id="ohlc-fn-bar">
+        ${fnKeyHtml(1)}
+        ${fnKeyHtml(2)}
+        ${fnKeyHtml(3)}
+        ${fnKeyHtml(4)}
+        ${fnKeyHtml(5)}
+        ${fnKeyHtml(6)}
+      </div>
+      <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors row-0" id="ohlc-bar">
         ${keyHtml('id="ohlc-drop" type="button"', ICO.img, DROP_HINT)}
         ${keyHtml('id="ohlc-run" type="button"', ICO.scan, T.run)}
         ${keyHtml('data-view="chart" type="button" aria-selected="true"', ICO.bars, 'کندل‌های بازسازی‌شده')}
