@@ -780,7 +780,7 @@
      picture, the measured result, the tables and every temporary record this window
      wrote are dropped, so the whole page looks exactly like a fresh launch. */
   function resetInputPanel() {
-    state.img = null; state.result = null; state.imgKey = null;
+    state.img = null; state.result = null; state.imgKey = null; state.autoHanded = false;
     state.confirmedKey = null; state.lastWrite = null; state.write = null;
     try { window.__ohlcReport = null; window.__ohlcWrite = null; } catch (e) { }
     ['ohlc-chart', 'ohlc-orig', 'ohlc-ann'].forEach((id) => {
@@ -827,9 +827,11 @@
           r.confirmedCandles = state.result.bars.length;
         }
       } catch (e) { /* our own note */ }
-      state.write = writeExtracted();      /* the engine gets its temporary query; never blocks the close */
-      keepOverlayRecord(overlayRecord()); /* the measured candles, kept for the card and the next load */
-      mountOverlay();                     /* and the candle chart is drawn over «محیط الگو» right away */
+      if (!state.autoHanded) {             /* v54: a successful run already handed the query over */
+        state.write = writeExtracted();    /* the engine gets its temporary query; never blocks the close */
+        keepOverlayRecord(overlayRecord());/* the measured candles, kept for the card and the next load */
+      }
+      mountOverlay();                      /* and the candle chart is drawn over «محیط الگو» right away */
       status('تأیید شد — ' + state.result.bars.length + ' کندل به موتور داده شد؛ ' +
         'چارت کندلیِ همین اندازه‌گیری، هم‌قاب با همین تصویر، در «محیط الگو» زیر همین پنل نشسته است. ' +
         'با همین پنل می‌توانید تصویر بعدی را وارد کنید.');
@@ -879,7 +881,7 @@
     const im = new Image();
     im.crossOrigin = 'anonymous';
     im.onload = () => {
-      state.img = im;
+      state.img = im; state.autoHanded = false;
       state.imgKey = sigOf(src);
       state.confirmedKey = null;
       $('ohlc-table').innerHTML = '';
@@ -956,7 +958,22 @@
       const ms = Math.round(performance.now() - t0);
       report(res, ms);
       try { drawResults(res); } catch (e) { console.warn('preview rendering failed:', e); }
-      if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms), 'warn');
+      /* v54 — a successful extraction arms the play key IMMEDIATELY: the measured
+         candles (real prices when the axis was read, honest relative pixel closes
+         otherwise — v52) are handed to the engine-1 query spot right away, so
+         «پلی» works straight after «استخراج کندل‌ها», exactly like the app's own
+         extract→pattern→search flow. No need to press «تأیید» first. */
+      try {
+        if (writeOn() && res.bars && res.bars.some((b) => b.status === 'ok')) {
+          await writeExtracted();
+          keepOverlayRecord(overlayRecord());
+          state.autoHanded = true;                    /* «تأیید» afterwards won't hand over twice */
+          const d = $('ohlc-fn-4');
+          if (d) d.setAttribute('aria-disabled', 'false');
+        }
+      } catch (e) { console.warn('[ohlc] auto arm failed:', e); }
+      if (!(res.calibration && res.calibration.detected)) status(summaryText(res, ms) +
+        '\nحالا کلید ۴ (پلی) را بزنید تا موتور ۱ با همین کندل‌ها در دیتاست‌های انتخابی جستجو کند.', 'warn');
       state.lastImage = forced || state.imgKey || null;
       return res;
     } catch (err) {
@@ -1347,7 +1364,12 @@
       k.title = t0; k.setAttribute('aria-label', t0);
       k.addEventListener('click', function () {
         var o = $(it.orig);
-        if (!o || o.disabled) return;      /* same rule as the original key */
+        if (!o || o.disabled) {            /* same rule as the original key — but say why */
+          if (it.orig === 'btn-start-analysis') {
+            status('کلید ۴ (پلی) فعلاً غیرفعال است — تصویری بارگذاری و «استخراج کندل‌ها» را بزنید تا الگویی برای جستجو آماده شود.', 'warn');
+          }
+          return;
+        }
         fire(o);                            /* the app's own handler runs (direct) */
         if (it.orig === 'btn-clear-all') fullReset();   /* our side of the wipe runs too */
         syncOne(it);
