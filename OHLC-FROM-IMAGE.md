@@ -899,3 +899,35 @@ Request: کلیدهای سطل آشغال و استاپ و پلی که زیر پ
 - Cache: `?v=51` / `chartdna-v2.51.0-fn456-deck-duties`.
 - Revert: remove the v51 block + ICO play/square/trash2, drop the icons from the
   fn row markup, remove the `#remote-control-deck` hide rule, restore `?v=50`.
+
+### v52 — play/stop/trash semantics: engine-1 search from engine-3 data + shape fallback + full trash reset
+
+Request: کلید پلی باید موتور ۱ را با دادهٔ به‌دست‌آمده از موتور ۳ روی دیتاست‌های
+انتخاب‌شده به جستجوی الگوی مشابه ببرد؛ استاپ همهٔ موتورها را متوقف کند؛ سطل آشغال همهٔ
+تصاویر آپلودشده را پاک کند و برنامه مثل باز شدن تازه شود. Answer: اگر قیمت‌ها (O/H/L/C)
+خوانده شوند جستجو با همان‌هاست؛ اگر خوانده نشوند، جستجوی شکلی (روش پیشنهادی).
+
+- Key ۴/۵/۶ forward real clicks to the app's own `btn-start-analysis` /
+  `btn-stop-analysis` / `btn-clear-all` (v51). This v52 makes the chain work when the
+  price axis is NOT readable (the case for every TradingView-widget shot probed, at
+  any size/DPI): previously confirm then handed nothing over and play stayed dead.
+- Engine-3 hand-off fallback: when calibration is missing, each measured candle's
+  pixel rows map 1:1 to a *relative* price (price falls as the pixel row grows, exactly
+  like a real axis), so the closes keep the true shape and direction of the candles —
+  engine-1 normalizes the query anyway and searches by shape. Nothing absolute is
+  invented: the pattern is named «Pixel shape (نسبی)» and both the notes and the
+  status line say the search is shape-only. When the axis IS read, the real
+  open/high/low/close values are handed over as before («Pixel reconstruction»).
+- The overlay record (`chartdna_px_overlay`) is written in both cases → the app's own
+  play key (`btn-start-analysis`) arms (fn ۴ un-disables, verified live after confirm:
+  ovStore=true, pxRecs=1, fn4 aria-disabled=false) and engine-1 can start with the
+  engine-3 pattern over the user-selected datasets; stop = the app's cancel flag.
+- Trash (fn ۶) now also resets the «ورود تصویر» window itself to its fresh-launch
+  look: loaded image cleared, all three canvases emptied, views/table hidden, status
+  «هنوز تصویری انتخاب نشده.», the file input reset, and the window's own px pattern
+  records (stored + pending) dropped — on top of the existing overlay/env cleanup.
+- Verified live (injected v52): after confirm with an axis-less image the play key is
+  armed and one px pattern + overlay record exist; after fn ۶ the window is back to
+  boot state (img null, ovStore false, pxRecs 0, table/views hidden) with no errors.
+- Cache: `?v=52` / `chartdna-v2.52.0-engine1-handoff-trash`.
+- Revert: remove the v52 barPrice fallback + resetInputPanel changes, restore `?v=51`.

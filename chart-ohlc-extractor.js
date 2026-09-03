@@ -417,18 +417,32 @@
       }
     } catch (e) { }
   }
+  /* v52 — engine-1 hand-off value of one measured candle level. When the price axis
+     was read, the engine's own open/high/low/close are handed over. When it was not
+     (in practice: TradingView widget shots), the same per-bar pixel rows map 1:1 onto
+     a price: price falls as the pixel row grows, exactly like a real axis, so the
+     series keeps the true shape and direction of the candles and engine 1 can still
+     search by shape. Nothing absolute is invented — the record names which case it is. */
+  function barPrice(b, key) {
+    const v = b[key];
+    if (v != null) return v;
+    const pxMap = { o: 'openPx', h: 'rowHigh', l: 'rowLow', c: 'closePx' };
+    const px = b[pxMap[key]];
+    return px == null ? null : -px;
+  }
   async function writeExtracted() {
     const res = state.result;
     if (!writeOn()) return { error: 'switched off by ' + WRITE_OFF };
     if (!res || !res.ok) return { error: 'nothing was extracted' };
-    if (!(res.calibration && res.calibration.detected)) return { error: 'the price axis was never read, so there are no numbers to hand over' };
-    const okBars = res.bars.filter((b) => b.status === 'ok' && b.close != null);
+    const okBars = res.bars.filter((b) => b.status === 'ok');
     if (!okBars.length) return { error: 'no measurable candles to hand over' };
     try {
       const id = 'pxrec-' + Date.now().toString(36);
-      const name = 'Pixel reconstruction · ' + okBars.length + ' candles';
-      const q = res.quality || {}, cal = res.calibration;
-      const closes = okBars.map((b) => b.close);
+      const q = res.quality || {}, cal = res.calibration || {};
+      const priced = !!cal.detected && okBars.some((b) => b.close != null);
+      const closes = okBars.map((b) => barPrice(b, 'c'));
+      if (closes.some((v) => v == null)) return { error: 'incomplete candle rows — nothing handed over' };
+      const name = (priced ? 'Pixel reconstruction · ' : 'Pixel shape (نسبی) · ') + okBars.length + ' candles';
       const stamp = new Date().toISOString();
       /* nothing is written into «مدیریت داده‌ها» and no picture is stored anywhere:
          the measurement lives only as ONE temporary query in the pattern library —
@@ -436,25 +450,29 @@
          confirm replaces it */
       dropPxPatterns();
       const pCloses = {
-        id: 'custom_dna_px_' + id, name, category: 'Pixel closes', createdAt: Date.now(),
+        id: 'custom_dna_px_' + id, name, category: priced ? 'Pixel closes' : 'Pixel shape', createdAt: Date.now(),
         points: closes, normalizedPoints: norm(closes),
         notes: 'الگوی موقتِ جستجو از تصویر — ' + okBars.length + ' بسته‌شونده (میانگین اطمینان ' +
-          (q.meanConfidence == null ? '—' : q.meanConfidence) + '، ' + (cal.modelChoice || '') +
-          '). دیتاستی ذخیره نشده و با تأیید بعدی جایگزین می‌شود. منبع: ' + stamp
+          (q.meanConfidence == null ? '—' : q.meanConfidence) + '). ' +
+          (priced
+            ? 'محور قیمت خوانده شد (' + (cal.modelChoice || '') + ') — جستجو با بستن‌های واقعی.'
+            : 'محور قیمت خوانده نشد — بستن‌ها نسبیِ پیکسلی‌اند (فقط شکل کندل‌ها، بدون قیمت واقعی)؛ جستجو شکلی است.') +
+          ' دیتاستی ذخیره نشده و با تأیید بعدی جایگزین می‌شود. منبع: ' + stamp
       };
       const s1 = appendPattern(pCloses);
       if (s1 !== 'queued-for-next-load') guardPatterns([pCloses], 3);
       const out = {
-        id, name, candles: okBars.length, dataset: 'not-stored',
+        id, name, candles: okBars.length, dataset: 'not-stored', priced,
         patterns: [pCloses.id], patternStates: [s1],
         waitingForLoad: s1 === 'queued-for-next-load', at: stamp
       };
       window.__ohlcWrite = out;
       state.lastWrite = out;
       status('به موتور داده شد: یک الگوی موقت با ' + okBars.length + ' بسته‌شونده در «کتابخانهٔ الگو» (جایگزین الگوی تصویریِ قبلی)' +
-        (out.waitingForLoad ? ' — کتابخانه هنوز ساخته نشده؛ در بارگذاری بعد ظاهر می‌شود' : '') +
+        (priced ? ' — با قیمت‌های خوانده‌شده از محور.' : ' — محور قیمت خوانده نشد، بستن‌ها نسبی/پیکسلی‌اند و جستجو با «پلی» شکلی است.') +
+        (out.waitingForLoad ? ' کتابخانه هنوز ساخته نشده؛ در بارگذاری بعد ظاهر می‌شود' : '') +
         '. هیچ دیتاستی در «مدیریت داده‌ها» ذخیره نشد و تصویر هم جایی نگه داشته نمی‌شود. ' +
-        'جستجو با کلید «جستجوی فوری این الگو در تمام نمادها» انجام می‌شود؛ خودکار جستجو نمی‌کنیم.', 'warn');
+        'جستجو با کلید پلی (کلید ۴) انجام می‌شود؛ خودکار جستجو نمی‌کنیم.', 'warn');
       console.info('[ohlc] handed to the engine:', out);
       return out;
     } catch (err) {
@@ -497,16 +515,16 @@
   function overlayRecord() {
     const res = state.result;
     if (!res || !res.ok) return null;
-    const bars = res.bars.filter((b) => b.status === 'ok' && b.close != null);
+    const bars = res.bars.filter((b) => b.status === 'ok');
     if (!bars.length) return null;
-    const candles = bars.map((b) => ({
-      o: b.open == null ? b.close : b.open,
-      h: b.high == null ? Math.max(b.open == null ? b.close : b.open, b.close) : b.high,
-      l: b.low == null ? Math.min(b.open == null ? b.close : b.open, b.close) : b.low,
-      c: b.close,
-      up: b.direction === 'Bullish'
-    }));
-    return { at: new Date().toISOString(), frame: viewFrame(), candles };
+    const priced = !!(res.calibration && res.calibration.detected);
+    const candles = bars.map((b) => {
+      const o = barPrice(b, 'o'), h = barPrice(b, 'h'), l = barPrice(b, 'l'), c = barPrice(b, 'c');
+      if (o == null || h == null || l == null || c == null) return null;
+      return { o, h, l, c, up: b.direction === 'Bullish' };
+    }).filter(Boolean);
+    if (!candles.length) return null;
+    return { at: new Date().toISOString(), frame: viewFrame(), candles, mode: priced ? 'ohlc' : 'shape' };
   }
   function keepOverlayRecord(rec) {
     state.ovData = rec || null;
@@ -758,16 +776,39 @@
     if (v) mountOverlay(); else removeOverlay();
     return !!document.getElementById(OV);
   }
+  /* v52 — «سطل آشغال» also wipes the «ورود تصویر» window itself: the loaded
+     picture, the measured result, the tables and every temporary record this window
+     wrote are dropped, so the whole page looks exactly like a fresh launch. */
+  function resetInputPanel() {
+    state.img = null; state.result = null; state.imgKey = null;
+    state.confirmedKey = null; state.lastWrite = null; state.write = null;
+    try { window.__ohlcReport = null; window.__ohlcWrite = null; } catch (e) { }
+    ['ohlc-chart', 'ohlc-orig', 'ohlc-ann'].forEach((id) => {
+      const cv = $(id);
+      if (!cv) return;
+      try { const ctx = cv.getContext('2d'); if (ctx) ctx.clearRect(0, 0, cv.width || 0, cv.height || 0); } catch (e) { }
+    });
+    const ann = $('ohlc-ann'), orig = $('ohlc-orig');
+    if (ann) ann.classList.add('ohlc-hidden');
+    if (orig) orig.classList.add('ohlc-hidden');           /* boot look: only the empty chart frame */
+    const tb = $('ohlc-table'); if (tb) tb.innerHTML = '';
+    const tc = $('ohlc-table-card'); if (tc) tc.classList.add('ohlc-hidden');
+    const fi = $('ohlc-file'); if (fi) { try { fi.value = ''; } catch (e) { } }
+    dropPxPatterns();                                      /* and the px query records, stored or pending */
+    status('هنوز تصویری انتخاب نشده.');
+  }
   /* the app's «سطل آشغال» key (#btn-clear-all, «پاکسازی محیط») resets its own React
      state; this runs alongside it and fully wipes our side too: it removes the candle
-     overlay, clears the stored overlay/frame and returns every reshaped window to its
-     normal size — the environment looks as if the app was just launched. */
+     overlay, clears the stored overlay/frame, drops the px pattern records, returns
+     every reshaped window to its normal size and empties this window back to its
+     fresh-launch look — the whole page is clean and ready to start over. */
   function fullReset() {
     removeOverlay();            /* drops the canvas and stops the rAF / scroll watchers */
     keepOverlayRecord(null);    /* state.ovData = null and the stored overlay is removed */
     try { localStorage.removeItem(OV_FRAME); } catch (e) { }
     state.ovData = null;
     unshapeStage();             /* the environment + comparative cards go back to normal */
+    resetInputPanel();          /* and the «ورود تصویر» window back to its fresh state */
   }
   document.addEventListener('click', (e) => {
     const b = e.target && e.target.closest && e.target.closest('#btn-clear-all');
