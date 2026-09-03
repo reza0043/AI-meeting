@@ -834,3 +834,19 @@ Request: چند مدلِ نمایشِ سبک‌تر برای چارت زنده (
   stored index always resolves. Default = the lightest model.
 - Cache: `?v=47` / `chartdna-v2.47.0-tv-modes-cycle`.
 - Revert: drop the v47 mode blocks from `chart-ohlc-extractor.js`, restore `?v=46`.
+
+### v48 — duty icons on کلیدهای ۱ و ۲ (same lucide set as the row below)
+
+Request: «به کلید شماره ۱ و ۲ آیکونی که نشان‌دهنده وظیفه‌شان است اختصاص بده؛ شکل آیکون‌ها
+با کتابخانهٔ آیکون‌های ردیف پایینی همخوانی داشته باشد و همه از یک کتابخانه باشند.»
+
+- Key ۱ (live TradingView price) face is now the lucide **tv** glyph; key ۲ (display
+  model cycle) the lucide **palette** glyph. Keys ۳–۶ keep their Persian digits.
+- The glyph node data was extracted from the exact same icon library the window's own
+  row was copied from (`lucide-react` **v0.475.0**, verified against the installed
+  package) and rendered by the same `LUCIDE()` helper → identical
+  `class="lucide lucide-… w-4 h-4 group-hover:scale-110…"` svgs at 16×16 px, so both
+  rows read as one family. Tooltips/aria still carry the key numbers and duty.
+- Cache: `?v=48` / `chartdna-v2.48.0-fn-duty-icons`.
+- Revert: drop the ICO `tv`/`palette` entries, pass digits again in the fn row markup,
+  restore `?v=47`.

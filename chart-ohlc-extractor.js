@@ -134,17 +134,24 @@
     bars: LUCIDE('chart-no-axes-column', '<line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/>'),
     eye: LUCIDE('eye', '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>'),
     cross: LUCIDE('crosshair', '<circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>'),
-    check: LUCIDE('circle-check', '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>')
+    check: LUCIDE('circle-check', '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
+    /* v48 — duty icons for the numbered row, glyphs copied from the same lucide-react
+       v0.475.0 set as the row below (verified against the installed package): کلید ۱ =
+       live price (tv), کلید ۲ = display-model cycle (palette). */
+    tv: LUCIDE('tv', '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>'),
+    palette: LUCIDE('palette', '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>')
   };
   const keyHtml = (attr, ico, text) => '<button class="ohlc-dk ' + DECK_KEY + '" ' + attr +
     ' title="' + text + '" aria-label="' + text + '">' + ico + '</button>';
   /* v44 — digits 1-6 in Persian (۱۲۳۴۵۶) for the numbered placeholder row */
   const faDigit = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
   /* v44 — the numbered key of the new top row: one digit on the face (span.fn-num),
-     the title «کلید n» ready for the later assignment */
-  const fnKeyHtml = (n) => '<button id="ohlc-fn-' + n + '" type="button" class="ohlc-dk fn-key ' + DECK_KEY +
+     the title «کلید n» ready for the later assignment. When a duty is assigned and an
+     icon is passed (v48: keys ۱ and ۲), the icon becomes the face instead of the digit —
+     the glyph is copied from the same lucide-react v0.475.0 set the row below uses. */
+  const fnKeyHtml = (n, ico) => '<button id="ohlc-fn-' + n + '" type="button" class="ohlc-dk fn-key ' + DECK_KEY +
     '" data-fn="' + n + '" title="کلید ' + faDigit(n) + '" aria-label="کلید ' + faDigit(n) + '">' +
-    '<span class="fn-num">' + faDigit(n) + '</span></button>';
+    (ico || '<span class="fn-num">' + faDigit(n) + '</span>') + '</button>';
 
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
@@ -154,8 +161,8 @@
     <div style="margin-top:12px">
       <!-- v44 — the numbered six-key row: placeholder band above the window's own row -->
       <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors" id="ohlc-fn-bar">
-        ${fnKeyHtml(1)}
-        ${fnKeyHtml(2)}
+        ${fnKeyHtml(1, ICO.tv)}
+        ${fnKeyHtml(2, ICO.palette)}
         ${fnKeyHtml(3)}
         ${fnKeyHtml(4)}
         ${fnKeyHtml(5)}
