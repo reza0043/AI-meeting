@@ -871,3 +871,31 @@ Request: «پنجره تریدینگ وید الان به صورت پیش فرض
   by the reverted camera-snapshot build).
 - Revert: set the default `range` back to `'12M'` and restore `?v=48` / the sw
   version `chartdna-v2.48.0-fn-duty-icons`.
+
+### v51 — کلیدهای ۴–۶: پلی و جستجو · استاپ · سطل آشغال (انتقال از نوار زیر «محیط الگو»)
+
+Request: کلیدهای سطل آشغال و استاپ و پلی که زیر پنجرهٔ «محیط الگو» هستند با همان
+کارکرد و اتصالات به کلیدهای شماره‌دار بالای پنجرهٔ «ورود تصویر» منتقل شوند —
+کلید ۶ = سطل آشغال، ۵ = استاپ، ۴ = پلی و جستجو — و از آن محیط هم حذف شوند.
+
+- The app's control strip below the «محیط الگو» window is `#remote-control-deck`
+  (four keys: import-image — duty already moved in v45 — plus `#btn-start-analysis`
+  «شروع تحلیل DNA الگو» / `#btn-stop-analysis` «توقف تحلیل» / `#btn-clear-all`
+  «پاکسازی محیط و داده‌ها»). The whole strip is now hidden by CSS
+  (`#remote-control-deck{display:none!important}`) — all its duties live in the row.
+- کلیدهای ۴/۵/۶ of the numbered row get the duty icons play / square / trash-2
+  (glyphs copied from the same lucide-react v0.475.0 set — the very glyphs the
+  deck buttons render: `lucide-play`, `lucide-square`, `lucide-trash-2`), same
+  16×16 `w-4 h-4` face as the rest of the row.
+- Same behaviour and connections, not a copy: the original buttons stay alive in
+  the DOM (invisible) and each fn key forwards a REAL click to its original
+  (`btn-start-analysis`/`btn-stop-analysis`/`btn-clear-all`) — React's own handler
+  runs, chart-dna-methods keeps arming the play key, and our capture hook on
+  `#btn-clear-all` (fullReset) fires exactly as before. Clicking while the original
+  is disabled is ignored (same rule as the original key).
+- The enabled/disabled state of each original is mirrored onto the fn key via
+  `aria-disabled` (dimmed look + «فعلاً غیرفعال» in the tooltip), polled briefly
+  after mount.
+- Cache: `?v=51` / `chartdna-v2.51.0-fn456-deck-duties`.
+- Revert: remove the v51 block + ICO play/square/trash2, drop the icons from the
+  fn row markup, remove the `#remote-control-deck` hide rule, restore `?v=50`.

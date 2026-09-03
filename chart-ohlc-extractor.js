@@ -33,6 +33,11 @@
   #ohlc-card,#ohlc-table-card{width:100%;background:#0b1220;color:#e5e7eb;border:1px solid #334155;border-radius:18px;padding:16px;box-sizing:border-box;box-shadow:0 12px 40px #000a;font-family:inherit}
   /* the deck key that used to open the overlay is retired: the panel is always on the page */
   #btn-import-image{display:none!important}
+  /* v51 — the whole deck strip below «محیط الگو» is retired: its play/stop/trash
+     duties moved up to کلیدهای ۴–۶ of the numbered row (the buttons stay in the DOM,
+     hidden, so the app's own handlers and enabled/disabled states keep working and the
+     fn keys forward real clicks to them — «همان کاربری و اتصالات»). */
+  #remote-control-deck{display:none!important}
   #ohlc-table-card{margin-top:12px}
   #ohlc-card h2{margin:0;font-size:19px}
   /* the six keys sit in one row, exactly like #remote-control-deck: 36px tall, rounded,
@@ -139,7 +144,14 @@
        v0.475.0 set as the row below (verified against the installed package): کلید ۱ =
        live price (tv), کلید ۲ = display-model cycle (palette). */
     tv: LUCIDE('tv', '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>'),
-    palette: LUCIDE('palette', '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>')
+    palette: LUCIDE('palette', '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>'),
+    /* v51 — duty icons for کلیدهای ۴–۶, the deck keys moved up from below the
+       «محیط الگو» window (glyphs copied from the same lucide-react v0.475.0 set —
+       they are exactly the glyphs the app's own deck buttons render): ۴ = play
+       («پلی و جستجو» = شروع تحلیل DNA الگو), ۵ = stop, ۶ = trash (سطل آشغال). */
+    play: LUCIDE('play', '<polygon points="6 3 20 12 6 21 6 3"/>'),
+    square: LUCIDE('square', '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>'),
+    trash2: LUCIDE('trash-2', '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>')
   };
   const keyHtml = (attr, ico, text) => '<button class="ohlc-dk ' + DECK_KEY + '" ' + attr +
     ' title="' + text + '" aria-label="' + text + '">' + ico + '</button>';
@@ -164,9 +176,9 @@
         ${fnKeyHtml(1, ICO.tv)}
         ${fnKeyHtml(2, ICO.palette)}
         ${fnKeyHtml(3)}
-        ${fnKeyHtml(4)}
-        ${fnKeyHtml(5)}
-        ${fnKeyHtml(6)}
+        ${fnKeyHtml(4, ICO.play)}
+        ${fnKeyHtml(5, ICO.square)}
+        ${fnKeyHtml(6, ICO.trash2)}
       </div>
       <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors row-0" id="ohlc-bar">
         ${keyHtml('id="ohlc-drop" type="button"', ICO.img, DROP_HINT)}
@@ -1238,6 +1250,57 @@
     });
     if (tvIsOpen()) { tvSection.classList.add('open'); tvFnKey.classList.add('on'); tvApplyScale(tvScale); tvEnsure(); }
   }
+
+  /* =====================================================================
+   * v51 — کلیدهای ۴–۶ take over the deck's play/search · stop · trash
+   * ---------------------------------------------------------------------
+   * The app's control strip under the «محیط الگو» window
+   * (#remote-control-deck) is hidden by CSS (above) and its three actions
+   * move up to the numbered row with the SAME behaviour and connections:
+   *   ۴ = پلی و جستجو → #btn-start-analysis («شروع تحلیل DNA الگو»)
+   *   ۵ = استاپ       → #btn-stop-analysis («توقف تحلیل»)
+   *   ۶ = سطل آشغال   → #btn-clear-all («پاکسازی محیط و داده‌ها»)
+   * The originals stay alive in the DOM, invisible, so pressing a fn key
+   * forwards a REAL click to them: React's own handler runs, chart-dna-
+   * methods keeps arming the play button, and our capture hook on
+   * #btn-clear-all (fullReset) fires exactly as before. Enabled/disabled
+   * states are mirrored onto the fn keys via aria-disabled.
+   * ===================================================================== */
+  (function wireDeckDuties() {
+    var items = [
+      { fn: 'ohlc-fn-4', orig: 'btn-start-analysis', num: '۴', fa: 'پلی و جستجو', note: 'شروع تحلیل DNA الگو (مثل دکمهٔ پخش زیر پنجرهٔ محیط الگو)' },
+      { fn: 'ohlc-fn-5', orig: 'btn-stop-analysis', num: '۵', fa: 'استاپ', note: 'توقف تحلیل (مثل دکمهٔ استاپ زیر پنجرهٔ محیط الگو)' },
+      { fn: 'ohlc-fn-6', orig: 'btn-clear-all', num: '۶', fa: 'سطل آشغال', note: 'پاکسازی محیط و داده‌ها (مثل دکمهٔ سطل زیر پنجرهٔ محیط الگو)' }
+    ];
+    function syncOne(it) {
+      var k = $(it.fn), o = $(it.orig);
+      if (!k) return;
+      if (!o) { k.setAttribute('aria-disabled', 'true'); return; }
+      var dis = !!o.disabled;
+      var cur = k.getAttribute('aria-disabled');
+      if (cur !== String(dis)) k.setAttribute('aria-disabled', String(dis));
+      var t = 'کلید ' + it.num + ' — ' + it.fa + ': ' + it.note;
+      if (dis) t += ' (فعلاً غیرفعال)';
+      if (k.title !== t) { k.title = t; k.setAttribute('aria-label', t); }
+    }
+    items.forEach(function (it) {
+      var k = $(it.fn);
+      if (!k) return;
+      var t0 = 'کلید ' + it.num + ' — ' + it.fa + ': ' + it.note;
+      k.title = t0; k.setAttribute('aria-label', t0);
+      k.addEventListener('click', function () {
+        var o = $(it.orig);
+        if (!o || o.disabled) return;      /* same rule as the original key */
+        o.click();                          /* the app's own handler runs */
+        syncOne(it);
+      });
+    });
+    var t0 = Date.now();
+    var w = setInterval(function () {
+      items.forEach(syncOne);
+      if (Date.now() - t0 > 600000) clearInterval(w);   /* 10 min is plenty for the mount watcher */
+    }, 900);
+  })();
 
   window.ChartDnaOhlc = {
     version: 20,
