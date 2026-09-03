@@ -3,17 +3,15 @@
  * screenshot and shows what was measured: the reconstructed candles and the table
  * of the numbers. The trend line and everything computed for it were removed in v28.
  * The window is named after what it is for: an image goes in, candles come out.
- * Nothing is downloaded and no picture leaves the page. «تأیید» hands the
- * measurement to the app's own engine — nothing is stored: only one temporary query
- * (the closes series) sits in the pattern library and each confirm replaces it — and
- * paints the reconstructed candlestick chart over «محیط الگو» at exactly the shape
- * and size of this window's picture (the card's stage is reshaped to the same wide
- * strip), keeping it in chartdna_px_overlay so it is back after a reload. The
- * search itself stays the
- * app's action: this window never presses «جستجو» for the user and never reloads.
- * The panel is a permanent part of the main page: it sits at the top of «محیط الگو»
- * in the sidebar, so there is no opener key any more (the old #btn-import-image key
- * in the deck strip is hidden). The screenshot is picked right here in the panel.
+ * Nothing is downloaded and no picture leaves the page. «استخراج کندل‌ها» measures
+ * the candles and immediately hands a temporary query (closes: real prices when the
+ * price axis was readable, honest relative pixel closes otherwise) to the app's
+ * engine-1 spot (chartdna_px_overlay / the pattern library) — each new extraction
+ * replaces the previous one. «پلی» (کلید ۴) then runs engine 1's search over the
+ * datasets the user selected. The search itself stays the app's action; this window
+ * never presses «جستجو» on its own. Since v56 the «محیط الگو» window is removed
+ * from the app entirely; the panel is the first card of the sidebar, right above the
+ * scan progress and the results. The screenshot is picked right here in the panel.
  * Everything happens in the browser: no image and no number leaves the page.
  */
 (() => {
@@ -38,6 +36,13 @@
      hidden, so the app's own handlers and enabled/disabled states keep working and the
      fn keys forward real clicks to them — «همان کاربری و اتصالات»). */
   #remote-control-deck{display:none!important}
+  /* v56 — the «محیط الگو» window is removed from the app entirely, with all its
+     connections (nothing is drawn over it any more). */
+  #image-cropper-card{display:none!important}
+  /* v56 — tiny key numbers ۱..۱۲ in the top-left corner of every key of the two
+     rows, so the user can refer to any key by its number */
+  .ohlc-dk{position:relative}
+  .ohlc-dk .dk-num{position:absolute;top:1px;left:2px;z-index:2;pointer-events:none;font-size:7.5px;font-weight:700;line-height:1.35;color:#7dd3fc;background:rgba(2,6,23,.6);border:1px solid rgba(125,211,252,.4);border-radius:3px;padding:0 2px;letter-spacing:0;direction:ltr}
   #ohlc-table-card{margin-top:12px}
   #ohlc-card h2{margin:0;font-size:19px}
   /* the six keys sit in one row, exactly like #remote-control-deck: 36px tall, rounded,
@@ -115,7 +120,7 @@
   const T = {
     title: 'ورود تصویر',
     run: 'استخراج کندل‌ها',
-    confirm: 'تأیید و نمایش در محیط الگو',
+    confirm: 'تأیید الگو — آماده برای جستجوی موتور ۱ (کلید ۴)',
     busy: 'در حال پردازش…'
   };
   const style = document.createElement('style'); style.textContent = STYLE; document.head.appendChild(style);
@@ -153,8 +158,12 @@
     square: LUCIDE('square', '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>'),
     trash2: LUCIDE('trash-2', '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>')
   };
-  const keyHtml = (attr, ico, text) => '<button class="ohlc-dk ' + DECK_KEY + '" ' + attr +
-    ' title="' + text + '" aria-label="' + text + '">' + ico + '</button>';
+  /* v56 — every key of the two rows carries its number as a tiny badge in its own
+     top-left corner (span.dk-num, Persian digit, 7.5px) so the user can refer to any
+     key by number; the icons stay centred and untouched. */
+  const numBadge = (n) => '<span class="dk-num" aria-hidden="true">' + faDigit(n) + '</span>';
+  const keyHtml = (attr, ico, text, num) => '<button class="ohlc-dk ' + DECK_KEY + '\" ' + attr +
+    ' title="' + text + '" aria-label="' + text + '">' + (num ? numBadge(num) : '') + ico + '</button>';
   /* v44 — digits 1-6 in Persian (۱۲۳۴۵۶) for the numbered placeholder row */
   const faDigit = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
   /* v44 — the numbered key of the new top row: one digit on the face (span.fn-num),
@@ -163,7 +172,7 @@
      the glyph is copied from the same lucide-react v0.475.0 set the row below uses. */
   const fnKeyHtml = (n, ico) => '<button id="ohlc-fn-' + n + '" type="button" class="ohlc-dk fn-key ' + DECK_KEY +
     '" data-fn="' + n + '" title="کلید ' + faDigit(n) + '" aria-label="کلید ' + faDigit(n) + '">' +
-    (ico || '<span class="fn-num">' + faDigit(n) + '</span>') + '</button>';
+    numBadge(n) + (ico || '<span class="fn-num">' + faDigit(n) + '</span>') + '</button>';
 
   const modal = document.createElement('div');
   modal.id = 'ohlc-modal';
@@ -181,12 +190,12 @@
         ${fnKeyHtml(6, ICO.trash2)}
       </div>
       <div class="ohlc-bar w-full border rounded-xl p-1.5 flex items-center justify-between gap-1 shadow-md backdrop-blur-md transition-colors row-0" id="ohlc-bar">
-        ${keyHtml('id="ohlc-drop" type="button"', ICO.img, DROP_HINT)}
-        ${keyHtml('id="ohlc-run" type="button"', ICO.scan, T.run)}
-        ${keyHtml('data-view="chart" type="button" aria-selected="true"', ICO.bars, 'کندل‌های بازسازی‌شده')}
-        ${keyHtml('data-view="orig" type="button" aria-selected="false"', ICO.eye, 'تصویر اصلی')}
-        ${keyHtml('data-view="ann" type="button" aria-selected="false"', ICO.cross, 'تصویر با مارک‌ها')}
-        ${keyHtml('id="ohlc-confirm" type="button"', ICO.check, T.confirm)}
+        ${keyHtml('id="ohlc-drop" type="button"', ICO.img, DROP_HINT, 7)}
+        ${keyHtml('id="ohlc-run" type="button"', ICO.scan, T.run, 8)}
+        ${keyHtml('data-view="chart" type="button" aria-selected="true"', ICO.bars, 'کندل‌های بازسازی‌شده', 9)}
+        ${keyHtml('data-view="orig" type="button" aria-selected="false"', ICO.eye, 'تصویر اصلی', 10)}
+        ${keyHtml('data-view="ann" type="button" aria-selected="false"', ICO.cross, 'تصویر با مارک‌ها', 11)}
+        ${keyHtml('id="ohlc-confirm" type="button"', ICO.check, T.confirm, 12)}
       </div>
       <!-- v45 — live TradingView price (کلید ۱). The TradingView Advanced Chart widget
            carries the full feature set: symbol search, timeframes, indicators, drawing
@@ -736,6 +745,8 @@
   }
   function mountOverlay() {
     if (!ovOn()) { removeOverlay(); return false; }
+    const card = cropCard();
+    if (!card || card.offsetParent === null) { removeOverlay(); return false; }  /* v56: «محیط الگو» removed */
     const dat = state.ovData;
     if (!dat || !dat.candles || !dat.candles.length) return false;
     let cv = document.getElementById(OV);
@@ -847,12 +858,12 @@
       } catch (e) { /* our own note */ }
       if (!state.autoHanded) {             /* v54: a successful run already handed the query over */
         state.write = writeExtracted();    /* the engine gets its temporary query; never blocks the close */
-        keepOverlayRecord(overlayRecord());/* the measured candles, kept for the card and the next load */
+        keepOverlayRecord(overlayRecord());/* the measured candles, kept for the query spot (engine 1) */
       }
-      mountOverlay();                      /* and the candle chart is drawn over «محیط الگو» right away */
-      status('تأیید شد — ' + state.result.bars.length + ' کندل به موتور داده شد؛ ' +
-        'چارت کندلیِ همین اندازه‌گیری، هم‌قاب با همین تصویر، در «محیط الگو» زیر همین پنل نشسته است. ' +
-        'با همین پنل می‌توانید تصویر بعدی را وارد کنید.');
+      if (cropCard() && cropCard().offsetParent !== null) mountOverlay();  /* v56: nothing to draw over once «محیط الگو» is gone */
+      else removeOverlay();
+      status('تأیید شد — ' + state.result.bars.length + ' کندل برای موتور ۱ آماده است؛ ' +
+        'کلید ۴ (پلی) جستجو را در دیتاست‌های انتخابی شروع می‌کند.');
     } else {
       status('چیزی برای تحویل نبود؛ یک تصویر نمودار را بارگذاری و «استخراج کندل‌ها» را بزنید.');
     }

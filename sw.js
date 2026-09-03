@@ -1,10 +1,10 @@
 /* Chart DNA — Service Worker */
-const VERSION = "chartdna-v2.55.0-play-arm-instant";
+const VERSION = "chartdna-v2.56.0-key-badges-no-env";
 const CACHE_NAME = `${VERSION}`;
 const PRECACHE_URLS = [
   "./",
   "index.html",
-  "chart-ohlc-extractor.js?v=55",
+  "chart-ohlc-extractor.js?v=56",
   "chart-ohlc-engine.js?v=43",
   "chart-dna-ui-trim.js?v=43",
   "chart-dna-methods.js?v=43",
